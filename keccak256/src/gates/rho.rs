@@ -4,7 +4,7 @@ use crate::gates::gate_helpers::Lane;
 
 use halo2::{
     circuit::Region,
-    plonk::{Advice, Column, Error},
+    plonk::{Advice, Column, ConstraintSystem, Error, Selector},
 };
 use itertools::Itertools;
 use num_bigint::BigUint;
@@ -12,13 +12,18 @@ use pasta_curves::arithmetic::FieldExt;
 use std::convert::TryInto;
 use std::marker::PhantomData;
 
+#[derive(Clone, Debug)]
 pub struct RhoConfig<F> {
-    state: [Column<Advice>; 25],
+    pub(crate) state: [Column<Advice>; 25],
     _marker: PhantomData<F>,
 }
 
 impl<F: FieldExt> RhoConfig<F> {
-    pub fn configure(state: [Column<Advice>; 25]) -> Self {
+    pub fn configure(
+        q_enable: Selector,
+        meta: &mut ConstraintSystem<F>,
+        state: [Column<Advice>; 25],
+    ) -> Self {
         Self {
             state,
             _marker: PhantomData,

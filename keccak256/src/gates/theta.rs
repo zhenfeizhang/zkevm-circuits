@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 #[derive(Clone, Debug)]
 pub struct ThetaConfig<F> {
     q_enable: Selector,
-    state: [Column<Advice>; 25],
+    pub(crate) state: [Column<Advice>; 25],
     _marker: PhantomData<F>,
 }
 
@@ -68,6 +68,8 @@ impl<F: FieldExt> ThetaConfig<F> {
         offset: usize,
         state: [F; 25],
     ) -> Result<[F; 25], Error> {
+        self.q_enable.enable(region, offset)?;
+        
         for (idx, lane) in state.iter().enumerate() {
             region.assign_advice(
                 || format!("assign state {}", idx),
