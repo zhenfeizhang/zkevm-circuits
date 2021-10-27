@@ -88,7 +88,6 @@ mod tests {
     use halo2::plonk::{Advice, Column, ConstraintSystem, Error};
     use halo2::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
     use itertools::Itertools;
-    use num_bigint::BigUint;
     use pasta_curves::arithmetic::FieldExt;
     use pasta_curves::pallas;
     use std::convert::TryInto;
@@ -165,19 +164,6 @@ mod tests {
 
                 Ok(())
             }
-        }
-        fn big_uint_to_pallas(a: &BigUint) -> pallas::Base {
-            let mut b: [u64; 4] = [0; 4];
-            let mut iter = a.iter_u64_digits();
-
-            for i in &mut b {
-                *i = match &iter.next() {
-                    Some(x) => *x,
-                    None => 0u64,
-                };
-            }
-
-            pallas::Base::from_raw(b)
         }
 
         let input1: State = [
