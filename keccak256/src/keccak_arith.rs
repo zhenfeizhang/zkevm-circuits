@@ -49,7 +49,7 @@ impl KeccakFArith {
         out
     }
 
-    fn rho(a: &StateBigInt) -> StateBigInt {
+    pub fn rho(a: &StateBigInt) -> StateBigInt {
         let mut out = StateBigInt::default();
         for (x, y) in (0..5).cartesian_product(0..5) {
             out[(x, y)] = convert_b13_lane_to_b9(
@@ -60,7 +60,7 @@ impl KeccakFArith {
         out
     }
 
-    fn pi(a: &StateBigInt) -> StateBigInt {
+    pub fn pi(a: &StateBigInt) -> StateBigInt {
         let mut out = StateBigInt::default();
         for (x, y) in (0..5).cartesian_product(0..5) {
             out[(y, (2 * x + 3 * y) % 5)] = a[(x, y)].clone();

@@ -65,4 +65,13 @@ impl<F: FieldExt> RhoConfig<F> {
         }
         Ok(next_state.try_into().unwrap())
     }
+
+    pub fn assign_state(
+        &self,
+        region: &mut Region<'_, F>,
+        offset: usize,
+        state: [F; 25],
+    ) -> Result<[F; 25], Error> {
+        unimplemented!()
+    }
 }
