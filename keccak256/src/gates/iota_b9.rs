@@ -11,8 +11,8 @@ use std::marker::PhantomData;
 pub struct IotaB9Config<F> {
     q_enable: Selector,
     state: [Column<Advice>; 25],
-    round_ctant_b9: Column<Advice>,
-    round_constants: Column<Instance>,
+    pub(crate) round_ctant_b9: Column<Advice>,
+    pub(crate) round_constants: Column<Instance>,
     _marker: PhantomData<F>,
 }
 
@@ -64,21 +64,18 @@ impl<F: FieldExt> IotaB9Config<F> {
         Ok(state)
     }
 
-    /// Here we have reserved on an absolute perspective of the circuit the second column
-    /// for the round constants in base-9.
-    /// What we do is assign an advide column to them using copy constraints and that requires to
-    /// enable `meta.enable_equality()` when actually defining the chip.
+    /// Assigns the ROUND_CONSTANTS_BASE_9 to the `absolute_row` passed asn an absolute instance column.
     pub fn assign_round_ctant_b9(
         &self,
         region: &mut Region<'_, F>,
         offset: usize,
-        round_ctant: usize,
+        absolute_row: usize,
     ) -> Result<(), Error> {
         region.assign_advice_from_instance(
-            // 1 is the absolute offset in the overall Region where the Column is laying.
-            || format!("assign round_ctant_b9 {}", 1),
+            // `absolute_row` is the absolute offset in the overall Region where the Column is laying.
+            || format!("assign round_ctant_b9 {}", absolute_row),
             self.round_constants,
-            round_ctant,
+            absolute_row,
             self.round_ctant_b9,
             offset,
         )?;
