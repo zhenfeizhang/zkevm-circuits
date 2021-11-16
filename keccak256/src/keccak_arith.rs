@@ -107,7 +107,7 @@ impl KeccakFArith {
         if next_input.is_none() {
             let mut state = KeccakFArith::iota_b9(a, rc);
             for (x, y) in (0..5).cartesian_product(0..5) {
-                state[(x, y)] = convert_b9_lane_to_b13(state[(x, y)]);
+                state[(x, y)] = convert_b9_lane_to_b13(state[(x, y)].clone());
             }
             state
         } else {
