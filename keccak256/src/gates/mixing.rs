@@ -66,10 +66,11 @@ impl<F: FieldExt> MixingConfig<F> {
         absolute_row_b13: usize,
         round: usize,
     ) -> Result<[F; 25], Error> {
+        let my_flag = next_mixing.is_some();
         let flag = next_mixing.is_some();
-        let (flag, new_offset) =
+        let (flag, _, new_offset) =
             self.iota_b9_config.copy_state_and_mixing_flag_and_rc(
-                &mut region,
+                region,
                 offset,
                 flag,
                 state,
@@ -79,15 +80,15 @@ impl<F: FieldExt> MixingConfig<F> {
 
         let (out_state, new_offset) =
             self.absorb_config.assign_state_and_next_inp_from_cell(
-                &mut region,
+                region,
                 new_offset,
                 state,
                 next_mixing.unwrap_or_default(),
-                flag,
+                my_flag,
             )?;
         let (out_state, new_offset) =
             self.iota_b13_config.assign_state_and_round_ctant(
-                &mut region,
+                region,
                 new_offset,
                 out_state,
                 round,

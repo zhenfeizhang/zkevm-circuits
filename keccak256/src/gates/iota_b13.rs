@@ -66,7 +66,7 @@ impl<F: FieldExt> IotaB13Config<F> {
         }
 
         let offset =
-            self.assign_round_ctant_b13(&mut region, offset, absolute_row)?;
+            self.assign_round_ctant_b13(region, offset, absolute_row)?;
 
         // Apply iota_b9 outside circuit
         let out_state = KeccakFArith::iota_b13(

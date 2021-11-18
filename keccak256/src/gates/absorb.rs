@@ -12,6 +12,7 @@ pub(crate) const ABSORB_NEXT_INPUTS: usize = 17;
 
 #[derive(Clone, Debug)]
 pub struct AbsorbConfig<F> {
+    q_enable: Selector,
     state: [Column<Advice>; 25],
     _marker: PhantomData<F>,
 }
@@ -34,10 +35,13 @@ impl<F: FieldExt> AbsorbConfig<F> {
         //             # coefficient in 0~8
         //             state[x][y] += 2 * next_input[x][y]
         //     return state
+
+        let q_enable = meta.selector();
         meta.create_gate("absorb", |meta| {
-            // Query is_mixing flag and multiply it at each round as the selector!
-            let is_mixing = meta
-                .query_advice(state[ABSORB_NEXT_INPUTS + 1], Rotation::cur());
+            let is_mixing = meta.query_selector(q_enable);
+            // // Query is_mixing flag and multiply it at each round as the selector!
+            // let is_mixing = meta
+            //     .query_advice(state[ABSORB_NEXT_INPUTS + 1], Rotation::cur());
             (0..ABSORB_NEXT_INPUTS)
                 .map(|idx| {
                     let val = meta.query_advice(state[idx], Rotation::prev())
@@ -47,12 +51,13 @@ impl<F: FieldExt> AbsorbConfig<F> {
                     let next_lane =
                         meta.query_advice(state[idx], Rotation::next());
 
-                    is_mixing * (val - next_lane)
+                    is_mixing.clone() * (val - next_lane)
                 })
                 .collect::<Vec<_>>()
         });
 
         AbsorbConfig {
+            q_enable,
             state,
             _marker: PhantomData,
         }
@@ -65,7 +70,8 @@ impl<F: FieldExt> AbsorbConfig<F> {
         offset: usize,
         state: [(Cell, F); 25],
         next_input: [F; ABSORB_NEXT_INPUTS],
-        flag: (Cell, F),
+        // flag: (Cell, F),
+        flag: bool,
     ) -> Result<([F; 25], usize), Error> {
         let mut state_array = [F::zero(); 25];
 
@@ -92,14 +98,18 @@ impl<F: FieldExt> AbsorbConfig<F> {
                 || Ok(*lane),
             )?;
         }
-        // Assign flag at last column(18th) of the offset + 1 row.
-        let obtained_cell = region.assign_advice(
-            || format!("assign next_input {}", ABSORB_NEXT_INPUTS + 1),
-            self.state[ABSORB_NEXT_INPUTS + 1],
-            offset + 1,
-            || Ok(flag.1),
-        )?;
-        region.constrain_equal(flag.0, obtained_cell)?;
+
+        if !flag {
+            self.q_enable.enable(region, offset + 1)?;
+        }
+        // // Assign flag at last column(18th) of the offset + 1 row.
+        // let obtained_cell = region.assign_advice(
+        //     || format!("assign next_input {}", ABSORB_NEXT_INPUTS + 1),
+        //     self.state[ABSORB_NEXT_INPUTS + 1],
+        //     offset + 1,
+        //     || Ok(flag.1),
+        // )?;
+        // region.constrain_equal(flag.0, obtained_cell)?;
 
         // Apply absorb outside circuit
         let out_state = KeccakFArith::absorb(
@@ -211,10 +221,12 @@ mod tests {
             }
 
             fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-                let q_enable = meta.selector();
-
                 let state: [Column<Advice>; 25] = (0..25)
-                    .map(|_| meta.advice_column())
+                    .map(|_| {
+                        let column = meta.advice_column();
+                        meta.enable_equality(column.into());
+                        column
+                    })
                     .collect::<Vec<_>>()
                     .try_into()
                     .unwrap();
@@ -270,7 +282,7 @@ mod tests {
                             offset,
                             in_state,
                             self.next_input,
-                            flag,
+                            self.is_mixing,
                         )
                     },
                 )?;

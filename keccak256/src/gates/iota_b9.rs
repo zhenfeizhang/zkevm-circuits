@@ -47,7 +47,7 @@ impl<F: FieldExt> IotaB9Config<F> {
                 + (Expression::Constant(F::from(2))
                     * meta.query_advice(round_ctant_b9, Rotation::cur()));
             let next_lane = meta.query_advice(state[0], Rotation::next());
-            vec![q_enable * (state_00 - next_lane)]
+            vec![q_enable.clone() * (state_00 - next_lane)]
         });
         IotaB9Config {
             q_enable,
@@ -148,7 +148,7 @@ impl<F: FieldExt> IotaB9Config<F> {
             region.constrain_equal(*cell, new_cell)?;
         }
 
-        self.assign_round_ctant_b9(&mut region, offset, absolute_row)?;
+        self.assign_round_ctant_b9(region, offset, absolute_row)?;
 
         // Apply iota_b9 outside circuit
         let out_state = KeccakFArith::iota_b9(
