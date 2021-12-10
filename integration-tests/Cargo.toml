@@ -21,3 +21,4 @@ pretty_assertions = "1.0.0"
 [features]
 default = []
 rpc = []
+circuit_input_builder = []

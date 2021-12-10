@@ -97,7 +97,7 @@ fi
 if [ -n "$STEP_TESTS" ]; then
     for testname in $ARG_TESTS; do
         echo "+ Running test group $testname"
-        cargo test --test $testname --features $testname
+        cargo test --test $testname --features $testname -- --nocapture
     done
 fi
 

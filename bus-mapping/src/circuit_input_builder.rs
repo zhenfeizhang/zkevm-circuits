@@ -810,15 +810,29 @@ impl<'a> CircuitInputStateRef<'a> {
 
 /// State and Code Access with "keys/index" used in the access operation.
 #[derive(Debug, PartialEq)]
-enum AccessValue {
-    Account { address: Address },
-    Storage { address: Address, key: Word },
-    Code { address: Address },
+pub enum AccessValue {
+    /// Account access
+    Account {
+        /// Account address
+        address: Address,
+    },
+    /// Storage access
+    Storage {
+        /// Storage account address
+        address: Address,
+        /// Storage key
+        key: Word,
+    },
+    /// Code access
+    Code {
+        /// Code address
+        address: Address,
+    },
 }
 
 /// State Access caused by a transaction or an execution step
 #[derive(Debug, PartialEq)]
-struct Access {
+pub struct Access {
     step_index: Option<usize>,
     rw: RW,
     value: AccessValue,
@@ -882,10 +896,20 @@ impl From<Vec<Access>> for AccessSet {
     }
 }
 
+/// TODO
+pub enum CodeSource {
+    /// Code comes from a deployed contract at `Address`.
+    Address(Address),
+    /// Code comes from tx.data when tx.to == null.
+    Tx,
+    /// Code comes from Memory by a CREATE* opcode.
+    Memory,
+}
+
 /// Generate the State Access trace from the given trace.  All state read/write
 /// accesses are reported, without distinguishing those that happen in revert
 /// sections.
-fn gen_state_access_trace<TX>(
+pub fn gen_state_access_trace<TX>(
     _block: &eth_types::Block<TX>,
     tx: &eth_types::Transaction,
     geth_trace: &GethExecTrace,
@@ -893,14 +917,16 @@ fn gen_state_access_trace<TX>(
     use AccessValue::{Account, Code, Storage};
     use RW::{READ, WRITE};
 
-    let mut call_address_stack = vec![tx.from];
+    let mut call_stack: Vec<(Address, CodeSource)> = Vec::new();
     let mut accs = vec![Access::new(None, WRITE, Account { address: tx.from })];
     if let Some(to) = tx.to {
+        call_stack.push((to, CodeSource::Address(to)));
         accs.push(Access::new(None, WRITE, Account { address: to }));
         // Code may be null if the account is not a contract
         accs.push(Access::new(None, READ, Code { address: to }));
     } else {
         let address = get_contract_address(tx.from, tx.nonce);
+        call_stack.push((address, CodeSource::Tx));
         accs.push(Access::new(None, WRITE, Account { address }));
         accs.push(Access::new(None, WRITE, Code { address }));
     }
@@ -908,26 +934,33 @@ fn gen_state_access_trace<TX>(
     for (index, step) in geth_trace.struct_logs.iter().enumerate() {
         let next_step = geth_trace.struct_logs.get(index + 1);
         let i = Some(index);
-        let sender = call_address_stack[call_address_stack.len() - 1];
+        let (contract_address, code_source) = &call_stack[call_stack.len() - 1];
+        let (contract_address, code_source) =
+            (contract_address.clone(), code_source.clone());
         match step.op {
             OpcodeId::SSTORE => {
-                let address = sender;
+                let address = contract_address;
                 let key = step.stack.nth_last(0)?;
                 accs.push(Access::new(i, WRITE, Storage { address, key }));
             }
             OpcodeId::SLOAD => {
-                let address = sender;
+                let address = contract_address;
                 let key = step.stack.nth_last(0)?;
                 accs.push(Access::new(i, READ, Storage { address, key }));
             }
             OpcodeId::SELFBALANCE => {
-                accs.push(Access::new(i, READ, Account { address: sender }));
+                let address = contract_address;
+                accs.push(Access::new(i, READ, Account { address }));
             }
             OpcodeId::CODESIZE => {
-                accs.push(Access::new(i, READ, Code { address: sender }));
+                if let CodeSource::Address(address) = code_source {
+                    accs.push(Access::new(i, READ, Code { address: *address }));
+                }
             }
             OpcodeId::CODECOPY => {
-                accs.push(Access::new(i, READ, Code { address: sender }));
+                if let CodeSource::Address(address) = code_source {
+                    accs.push(Access::new(i, READ, Code { address: *address }));
+                }
             }
             OpcodeId::BALANCE => {
                 let address = step.stack.nth_last(0)?.to_address();
@@ -946,7 +979,8 @@ fn gen_state_access_trace<TX>(
                 accs.push(Access::new(i, READ, Code { address }));
             }
             OpcodeId::SELFDESTRUCT => {
-                accs.push(Access::new(i, WRITE, Account { address: sender }));
+                let address = contract_address;
+                accs.push(Access::new(i, WRITE, Account { address }));
                 let address = step.stack.nth_last(0)?.to_address();
                 accs.push(Access::new(i, WRITE, Account { address }));
             }
@@ -971,41 +1005,46 @@ fn gen_state_access_trace<TX>(
                 }
             }
             OpcodeId::CALL => {
-                accs.push(Access::new(i, WRITE, Account { address: sender }));
+                let address = contract_address;
+                accs.push(Access::new(i, WRITE, Account { address }));
+
                 let address = step.stack.nth_last(1)?.to_address();
                 accs.push(Access::new(i, WRITE, Account { address }));
                 accs.push(Access::new(i, READ, Code { address }));
-                call_address_stack.push(address);
+                call_stack.push((address, CodeSource::Address(address)));
             }
             OpcodeId::CALLCODE => {
-                accs.push(Access::new(i, WRITE, Account { address: sender }));
+                let address = contract_address;
+                accs.push(Access::new(i, WRITE, Account { address }));
+
                 let address = step.stack.nth_last(1)?.to_address();
                 accs.push(Access::new(i, WRITE, Account { address }));
                 accs.push(Access::new(i, READ, Code { address }));
-                call_address_stack.push(address);
+                call_stack.push((address, CodeSource::Address(address)));
             }
             OpcodeId::DELEGATECALL => {
                 let address = step.stack.nth_last(1)?.to_address();
                 accs.push(Access::new(i, READ, Code { address }));
-                call_address_stack.push(sender);
+                call_stack
+                    .push((contract_address, CodeSource::Address(address)));
             }
             OpcodeId::STATICCALL => {
                 let address = step.stack.nth_last(1)?.to_address();
                 accs.push(Access::new(i, READ, Code { address }));
-                call_address_stack.push(address);
+                call_stack.push((address, CodeSource::Address(address)));
             }
             _ => {}
         }
         if let Some(next_step) = next_step {
             // return from a *CALL*
             if step.depth - 1 == next_step.depth {
-                if call_address_stack.len() == 1 {
+                if call_stack.len() == 1 {
                     return Err(Error::InvalidGethExecStep(
                         "gen_state_access_trace: call stack will be empty",
                         Box::new(step.clone()),
                     ));
                 }
-                call_address_stack.pop().expect("call stack is empty");
+                call_stack.pop().expect("call stack is empty");
             }
         }
     }
