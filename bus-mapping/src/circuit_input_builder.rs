@@ -861,9 +861,11 @@ fn get_call_result(trace: &[GethExecStep]) -> Option<Word> {
 
 /// State and Code Access set.
 #[derive(Debug, PartialEq)]
-struct AccessSet {
-    state: HashMap<Address, HashSet<Word>>,
-    code: HashSet<Address>,
+pub struct AccessSet {
+    /// Set of accounts
+    pub state: HashMap<Address, HashSet<Word>>,
+    /// Set of accounts code
+    pub code: HashSet<Address>,
 }
 
 impl From<Vec<Access>> for AccessSet {
@@ -896,7 +898,7 @@ impl From<Vec<Access>> for AccessSet {
     }
 }
 
-/// TODO
+/// Source of the code in the EVM execution.
 pub enum CodeSource {
     /// Code comes from a deployed contract at `Address`.
     Address(Address),
@@ -2328,7 +2330,7 @@ mod tracer_tests {
                 Access {
                     step_index: Some(7),
                     rw: WRITE,
-                    value: Account { address: ADDR_0 }
+                    value: Account { address: *ADDR_A }
                 },
                 Access {
                     step_index: Some(7),
