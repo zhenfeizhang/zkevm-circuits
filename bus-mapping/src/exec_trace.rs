@@ -1,11 +1,26 @@
 //! This module contains the logic for parsing and interacting with EVM
 //! execution traces.
 use crate::operation::Target;
+use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 /// The target and index of an `Operation` in the context of an
 /// `ExecutionTrace`.
 pub struct OperationRef(Target, usize);
+
+impl fmt::Debug for OperationRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "OperationRef{{ {}, {} }}",
+            match self.0 {
+                Target::Memory => "Memory",
+                Target::Stack => "Stack",
+                Target::Storage => "Storage",
+            },
+            self.1
+        ))
+    }
+}
 
 impl From<(Target, usize)> for OperationRef {
     fn from(op_ref_data: (Target, usize)) -> Self {

@@ -1,6 +1,6 @@
 use super::Opcode;
 use crate::circuit_input_builder::CircuitInputStateRef;
-use crate::eth_types::{GethExecStep, ToBigEndian};
+use crate::eth_types::{GethExecStep, ToBigEndian, Word};
 use crate::{
     evm::MemoryAddress,
     operation::{MemoryOp, StackOp, RW},
@@ -33,7 +33,12 @@ impl Opcode for Mload {
 
         // Read the memory
         let mut mem_read_addr: MemoryAddress = stack_value_read.try_into()?;
-        let mem_read_value = steps[1].memory.read_word(mem_read_addr)?;
+        // Accesses to memory that hasn't been initialized are valid, and return
+        // 0.
+        let mem_read_value = steps[1]
+            .memory
+            .read_word(mem_read_addr)
+            .unwrap_or_else(|_| Word::zero());
 
         //
         // First stack write

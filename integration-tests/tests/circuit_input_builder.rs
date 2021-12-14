@@ -14,8 +14,10 @@ lazy_static! {
     pub static ref GEN_DATA: GenDataOutput = GenDataOutput::load();
 }
 
+/// This test builds the complete circuit inputs for the block where the Greeter
+/// contract is deployed.
 #[tokio::test]
-async fn test_one() {
+async fn test_circuit_input_builder_block_a() {
     let (block_num, _address) = GEN_DATA.deployments.get("Greeter").unwrap();
 
     let cli = get_client();

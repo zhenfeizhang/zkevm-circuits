@@ -556,6 +556,10 @@ impl<'a> CircuitInputBuilder {
                 tx_ctx.call_ctx().swc,
             );
             let mut state_ref = self.state_ref(&mut tx, &mut tx_ctx, &mut step);
+            println!(
+                "DEBUG: gen_associated_ops for {:?}",
+                &geth_trace.struct_logs[index]
+            );
             geth_step.op.gen_associated_ops(
                 &mut state_ref,
                 &geth_trace.struct_logs[index..],

@@ -14,7 +14,7 @@ pub struct MemoryAddress(pub(crate) usize);
 
 impl fmt::Debug for MemoryAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("0x{:08x}", self.0))
+        f.write_fmt(format_args!("0x{:06x}", self.0))
     }
 }
 
