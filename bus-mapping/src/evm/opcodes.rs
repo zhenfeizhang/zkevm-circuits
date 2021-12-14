@@ -42,6 +42,13 @@ pub trait Opcode: Debug {
     ) -> Result<(), Error>;
 }
 
+fn dummy_gen_associated_ops(
+    _state: &mut CircuitInputStateRef,
+    _next_steps: &[GethExecStep],
+) -> Result<(), Error> {
+    Ok(())
+}
+
 type FnGenAssociatedOps = fn(
     state: &mut CircuitInputStateRef,
     next_steps: &[GethExecStep],
@@ -192,7 +199,15 @@ impl OpcodeId {
             // OpcodeId::STATICCALL => {},
             // OpcodeId::REVERT => {},
             // OpcodeId::SELFDESTRUCT => {},
-            _ => unimplemented!(),
+            // _ => panic!("Opcode {:?} gen_associated_ops not implemented",
+            // self),
+            _ => {
+                println!(
+                    "WARNING: Using dummy gen_associated_ops for opcode {:?}",
+                    self
+                );
+                dummy_gen_associated_ops
+            }
         }
     }
 

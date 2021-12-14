@@ -6,6 +6,7 @@ pub mod stack;
 pub mod storage;
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
 pub use {
     memory::{Memory, MemoryAddress},
     opcodes::{ids::OpcodeId, Opcode},
@@ -50,8 +51,14 @@ impl ProgramCounter {
 /// [`Operation`](crate::operation::Operation). The purpose of the
 /// `GlobalCounter` is to enforce that each Opcode/Instruction and Operation is
 /// unique and just executed once.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
 pub struct GlobalCounter(pub(crate) usize);
+
+impl fmt::Debug for GlobalCounter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}", self.0))
+    }
+}
 
 impl From<GlobalCounter> for usize {
     fn from(addr: GlobalCounter) -> usize {

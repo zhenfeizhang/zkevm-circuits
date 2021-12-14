@@ -3,7 +3,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(missing_docs)]
 
-use bus_mapping::eth_types::Address;
+use bus_mapping::eth_types::{Address, ChainConstants};
 use bus_mapping::rpc::GethClient;
 use ethers::{
     abi,
@@ -51,6 +51,15 @@ pub fn get_client() -> GethClient<Http> {
 pub fn get_provider() -> Provider<Http> {
     let transport = Http::new(Url::parse(&GETH0_URL).expect("invalid url"));
     Provider::new(transport).interval(Duration::from_millis(100))
+}
+
+/// Get the chain constants by querying the geth client.
+pub async fn get_chain_constants() -> ChainConstants {
+    let client = get_client();
+    ChainConstants {
+        coinbase: client.get_coinbase().await.unwrap(),
+        chain_id: client.get_chain_id().await.unwrap(),
+    }
 }
 
 const PHRASE: &str = "work man father plunge mystery proud hollow address reunion sauce theory bonus";

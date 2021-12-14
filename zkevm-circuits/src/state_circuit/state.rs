@@ -1973,7 +1973,7 @@ mod tests {
         let block = mock::BlockData::new_single_tx_geth_steps(geth_steps);
         let mut builder = CircuitInputBuilder::new(
             block.eth_block.clone(),
-            block.block_ctants.clone(),
+            block.ctants.clone(),
         );
         builder.handle_tx(&block.eth_tx, &block.geth_trace).unwrap();
 

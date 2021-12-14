@@ -1,8 +1,8 @@
 //! This module contains the CircuitInputBuilder, which is an object that takes
 //! types from geth / web3 and outputs the circuit inputs.
 use crate::eth_types::{
-    self, Address, GethExecStep, GethExecTrace, ToAddress, ToBigEndian, Word,
-    H256,
+    self, Address, ChainConstants, GethExecStep, GethExecTrace, Hash,
+    ToAddress, ToBigEndian, Word,
 };
 use crate::evm::{Gas, GasCost, GlobalCounter, OpcodeId, ProgramCounter};
 use crate::exec_trace::OperationRef;
@@ -11,7 +11,7 @@ use crate::operation::container::OperationContainer;
 use crate::operation::RW;
 use crate::operation::{Op, Operation};
 use crate::state_db::StateDB;
-use crate::{BlockConstants, Error};
+use crate::Error;
 use core::fmt::Debug;
 use ethers_core::utils::{get_contract_address, get_create2_address};
 use std::collections::{hash_map::Entry, HashMap, HashSet};
@@ -170,18 +170,18 @@ impl BlockContext {
 #[derive(Debug)]
 pub struct Block {
     /// Constants associated to this block and the chain.
-    pub constants: BlockConstants,
+    pub constants: ChainConstants,
     /// Container of operations done in this block.
     pub container: OperationContainer,
     txs: Vec<Transaction>,
-    code: HashMap<H256, Vec<u8>>,
+    code: HashMap<Hash, Vec<u8>>,
 }
 
 impl Block {
     /// Create a new block.
     pub fn new<TX>(
         _eth_block: &eth_types::Block<TX>,
-        constants: BlockConstants,
+        constants: ChainConstants,
     ) -> Self {
         Self {
             constants,
@@ -253,7 +253,7 @@ pub struct Call {
     /// Address where this call is being executed
     pub address: Address,
     /// Code Hash
-    code_hash: H256,
+    code_hash: Hash,
 }
 
 impl Call {
@@ -343,7 +343,7 @@ impl Transaction {
     /// Create a new Self.
     pub fn new(eth_tx: &eth_types::Transaction) -> Self {
         let mut calls = Vec::new();
-        let code_hash = H256::zero();
+        let code_hash = Hash::zero();
         if let Some(address) = eth_tx.to {
             calls.push(Call {
                 kind: CallKind::Call,
@@ -397,7 +397,7 @@ impl Transaction {
     ) -> usize {
         let is_static =
             kind == CallKind::StaticCall || self.calls[parent_index].is_static;
-        let code_hash = H256::zero();
+        let code_hash = Hash::zero();
         self.calls.push(Call {
             kind,
             is_static,
@@ -495,6 +495,8 @@ impl<'a> CircuitInputStateRef<'a> {
 pub struct CircuitInputBuilder {
     /// StateDB key-value DB
     pub sdb: StateDB,
+    /// Map of account codes by code hash
+    pub codes: HashMap<Hash, Vec<u8>>,
     /// Block
     pub block: Block,
     /// Block Context
@@ -505,11 +507,12 @@ impl<'a> CircuitInputBuilder {
     /// Create a new CircuitInputBuilder from the given `eth_block` and
     /// `constants`.
     pub fn new<TX>(
-        eth_block: eth_types::Block<TX>,
-        constants: BlockConstants,
+        eth_block: &eth_types::Block<TX>,
+        constants: ChainConstants,
     ) -> Self {
         Self {
             sdb: StateDB::new(),
+            codes: HashMap::new(),
             block: Block::new(&eth_block, constants),
             block_ctx: BlockContext::new(),
         }
@@ -1085,7 +1088,7 @@ mod tracer_tests {
             Self {
                 builder: CircuitInputBuilder::new(
                     block.eth_block.clone(),
-                    block.block_ctants.clone(),
+                    block.ctants.clone(),
                 ),
                 tx: Transaction::new(&block.eth_tx),
                 tx_ctx: TransactionContext::new(&block.eth_tx),
@@ -1232,7 +1235,7 @@ mod tracer_tests {
                 balance: Word::from(555u64), /* same value as in
                                               * `mock::new_tracer_account` */
                 storage: HashMap::new(),
-                codeHash: H256::zero(),
+                code_hash: Hash::zero(),
             },
         );
         assert_eq!(
@@ -1339,7 +1342,7 @@ mod tracer_tests {
                 balance: Word::from(555u64), /* same value as in
                                               * `mock::new_tracer_account` */
                 storage: HashMap::new(),
-                codeHash: H256::zero(),
+                code_hash: Hash::zero(),
             },
         );
         builder.builder.sdb.set_account(
@@ -1348,7 +1351,7 @@ mod tracer_tests {
                 nonce: Word::zero(),
                 balance: Word::zero(),
                 storage: HashMap::new(),
-                codeHash: H256::zero(),
+                code_hash: Hash::zero(),
             },
         );
         assert_eq!(
@@ -2260,7 +2263,7 @@ mod tracer_tests {
                 nonce: Word::from(1),
                 balance: Word::zero(),
                 storage: HashMap::new(),
-                codeHash: H256::zero(),
+                code_hash: Hash::zero(),
             },
         );
         let addr = builder.state_ref().create_address().unwrap();
