@@ -5,6 +5,7 @@
 
 use bus_mapping::eth_types::{Address, ChainConstants};
 use bus_mapping::rpc::GethClient;
+use env_logger::Env;
 use ethers::{
     abi,
     core::k256::ecdsa::SigningKey,
@@ -39,6 +40,12 @@ lazy_static! {
         Err(VarError::NotPresent) => GETH0_URL_DEFAULT.to_string(),
         Err(e) => panic!("Error in GETH0_URL env var: {:?}", e),
     };
+}
+
+/// Initialize log
+pub fn log_init() {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+        .init();
 }
 
 /// Get the integration test [`GethClient`]

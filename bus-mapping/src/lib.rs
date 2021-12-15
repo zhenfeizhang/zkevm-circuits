@@ -107,7 +107,7 @@
 //!
 //! let ctants = ChainConstants{
 //!     coinbase: Address::zero(),
-//!     chain_id: U64::zero(),
+//!     chain_id: 0,
 //! };
 //!
 //! // We use some mock data as context for the trace
@@ -115,7 +115,7 @@
 //! let eth_tx = mock::new_tx(&eth_block);
 //!
 //! let mut builder =
-//!     CircuitInputBuilder::new(eth_block, ctants);
+//!     CircuitInputBuilder::new(&eth_block, ctants);
 //!
 //! let geth_steps: Vec<GethExecStep> = serde_json::from_str(input_trace).unwrap();
 //! let geth_trace = GethExecTrace {

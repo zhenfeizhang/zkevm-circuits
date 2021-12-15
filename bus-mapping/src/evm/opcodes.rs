@@ -15,6 +15,7 @@ use crate::eth_types::GethExecStep;
 use crate::Error;
 use core::fmt::Debug;
 use ids::OpcodeId;
+use log::warn;
 
 use self::push::Push;
 use dup::Dup;
@@ -202,10 +203,7 @@ impl OpcodeId {
             // _ => panic!("Opcode {:?} gen_associated_ops not implemented",
             // self),
             _ => {
-                println!(
-                    "WARNING: Using dummy gen_associated_ops for opcode {:?}",
-                    self
-                );
+                warn!("Using dummy gen_associated_ops for opcode {:?}", self);
                 dummy_gen_associated_ops
             }
         }

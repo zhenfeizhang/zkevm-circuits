@@ -202,7 +202,7 @@ impl Block {
     }
 }
 
-/// Type of a *CALL* Function.
+/// Type of a *CALL*/CREATE* Function.
 #[derive(Debug, PartialEq)]
 pub enum CallKind {
     /// CALL
@@ -556,26 +556,20 @@ impl<'a> CircuitInputBuilder {
                 tx_ctx.call_ctx().swc,
             );
             let mut state_ref = self.state_ref(&mut tx, &mut tx_ctx, &mut step);
-            println!(
-                "DEBUG: gen_associated_ops for {:?}",
-                &geth_trace.struct_logs[index]
-            );
             geth_step.op.gen_associated_ops(
                 &mut state_ref,
                 &geth_trace.struct_logs[index..],
             )?;
-            tx.steps.push(step);
 
             if let Some(geth_next_step) = geth_trace.struct_logs.get(index + 1)
             {
                 if geth_step.depth + 1 == geth_next_step.depth {
-                    // Handle *CALL*
-                    // TODO: Set the proper address according to the call kind.
-                    let address = Address::zero();
+                    // Handle *CALL*/CREATE*
+                    let address = state_ref.call_address(geth_step)?;
                     let kind = CallKind::try_from(geth_step.op)?;
                     push_call(&mut tx, &mut tx_ctx, kind, address);
                 } else if geth_step.depth - 1 == geth_next_step.depth {
-                    // Handle *CALL* return
+                    // Handle *CALL*/CREATE* return
                     if tx_ctx.call_stack.len() == 1 {
                         return Err(Error::InvalidGethExecStep(
                             "handle_tx: call stack will be empty",
@@ -592,6 +586,7 @@ impl<'a> CircuitInputBuilder {
                     }
                 }
             }
+            tx.steps.push(step);
         }
         self.block.txs.push(tx);
         Ok(())
@@ -649,6 +644,8 @@ pub fn get_create_init_code(step: &GethExecStep) -> Result<&[u8], Error> {
 }
 
 impl<'a> CircuitInputStateRef<'a> {
+    /// Return the contract address of a CREATE step.  This is calculated by
+    /// inspecting the current address and its nonce from the StateDB.
     fn create_address(&self) -> Result<Address, Error> {
         let sender = self.call().address;
         let (found, account) = self.sdb.get_account(&sender);
@@ -658,6 +655,8 @@ impl<'a> CircuitInputStateRef<'a> {
         Ok(get_contract_address(sender, account.nonce))
     }
 
+    /// Return the contract address of a CREATE2 step.  This is calculated
+    /// deterministically from the arguments in the stack.
     fn create2_address(&self, step: &GethExecStep) -> Result<Address, Error> {
         let salt = step.stack.nth_last(3)?;
         let init_code = get_create_init_code(step)?;
@@ -666,6 +665,19 @@ impl<'a> CircuitInputStateRef<'a> {
             salt.to_be_bytes().to_vec(),
             init_code.to_vec(),
         ))
+    }
+
+    /// Return the contract address of a *CALL*/CREATE* step.
+    fn call_address(&self, step: &GethExecStep) -> Result<Address, Error> {
+        Ok(match step.op {
+            OpcodeId::CALL
+            | OpcodeId::CALLCODE
+            | OpcodeId::DELEGATECALL
+            | OpcodeId::STATICCALL => step.stack.nth_last(1)?.to_address(),
+            OpcodeId::CREATE => self.create_address()?,
+            OpcodeId::CREATE2 => self.create2_address(step)?,
+            _ => return Err(Error::OpcodeIdNotCallType),
+        })
     }
 
     fn get_step_err(
@@ -756,7 +768,7 @@ impl<'a> CircuitInputStateRef<'a> {
             ));
         }
 
-        // The *CALL* code was not executed
+        // The *CALL*/CREATE* code was not executed
         let next_pc = next_step.map(|s| s.pc.0).unwrap_or(1);
         if matches!(
             step.op,
@@ -806,7 +818,7 @@ impl<'a> CircuitInputStateRef<'a> {
             }
 
             return Err(Error::UnexpectedExecStepError(
-                "*CALL* code not executed",
+                "*CALL*/CREATE* code not executed",
                 Box::new(step.clone()),
             ));
         }
@@ -855,8 +867,8 @@ impl Access {
     }
 }
 
-/// Given a trace and assuming that the first step is a *CALL* kind opcode,
-/// return the result if found.
+/// Given a trace and assuming that the first step is a *CALL*/CREATE* kind
+/// opcode, return the result if found.
 fn get_call_result(trace: &[GethExecStep]) -> Option<Word> {
     let depth = trace[0].depth;
     trace[1..]
@@ -1045,7 +1057,7 @@ pub fn gen_state_access_trace<TX>(
             _ => {}
         }
         if let Some(next_step) = next_step {
-            // return from a *CALL*
+            // return from a *CALL*/CREATE*
             if step.depth - 1 == next_step.depth {
                 if call_stack.len() == 1 {
                     return Err(Error::InvalidGethExecStep(
@@ -1091,7 +1103,7 @@ mod tracer_tests {
         fn new(block: &mock::BlockData, geth_step: &GethExecStep) -> Self {
             Self {
                 builder: CircuitInputBuilder::new(
-                    block.eth_block.clone(),
+                    &block.eth_block,
                     block.ctants.clone(),
                 ),
                 tx: Transaction::new(&block.eth_tx),

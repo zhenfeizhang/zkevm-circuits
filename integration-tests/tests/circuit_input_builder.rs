@@ -6,8 +6,11 @@ use bus_mapping::circuit_input_builder::{
 use bus_mapping::eth_types::{Word, H256};
 use bus_mapping::state_db;
 use ethers::core::utils::keccak256;
-use integration_tests::{get_chain_constants, get_client, GenDataOutput};
+use integration_tests::{
+    get_chain_constants, get_client, log_init, GenDataOutput,
+};
 use lazy_static::lazy_static;
+use log::trace;
 use std::collections::HashMap;
 
 lazy_static! {
@@ -18,9 +21,11 @@ lazy_static! {
 /// contract is deployed.
 #[tokio::test]
 async fn test_circuit_input_builder_block_a() {
+    log_init();
     let (block_num, _address) = GEN_DATA.deployments.get("Greeter").unwrap();
-
     let cli = get_client();
+
+    // 1. Query geth for Block, Txs and TxExecTraces
     let eth_block = cli.get_block_by_number((*block_num).into()).await.unwrap();
     let geth_trace = cli
         .trace_block_by_number((*block_num).into())
@@ -28,20 +33,22 @@ async fn test_circuit_input_builder_block_a() {
         .unwrap();
     let tx_index = 0;
 
+    // 2. Get State Accesses from TxExecTraces
     let access_trace = gen_state_access_trace(
         &eth_block,
         &eth_block.transactions[tx_index],
         &geth_trace[tx_index],
     )
     .unwrap();
-
-    // for access in &access_trace {
-    //     println!("{:#?}", access);
-    // }
+    trace!("AccessTrace:");
+    for access in &access_trace {
+        trace!("{:#?}", access);
+    }
 
     let access_set = AccessSet::from(access_trace);
-    println!("AccessSet: {:#?}", access_set);
+    trace!("AccessSet: {:#?}", access_set);
 
+    // 3. Query geth for all accounts, storage keys, and codes from Accesses
     let mut proofs = Vec::new();
     for (address, key_set) in access_set.state {
         let mut keys: Vec<Word> = key_set.iter().cloned().collect();
@@ -51,7 +58,6 @@ async fn test_circuit_input_builder_block_a() {
             .await
             .unwrap();
         proofs.push(proof);
-        // println!("proof for {:?}:\n{:#?}", address, proof);
     }
     let mut codes = HashMap::new();
     for address in access_set.code {
@@ -65,6 +71,7 @@ async fn test_circuit_input_builder_block_a() {
     let constants = get_chain_constants().await;
     let mut builder = CircuitInputBuilder::new(&eth_block, constants);
 
+    // 4. Build a partial StateDB from step 3
     for proof in proofs {
         let mut storage = HashMap::new();
         for storage_proof in proof.storage_proof {
@@ -80,13 +87,15 @@ async fn test_circuit_input_builder_block_a() {
             },
         )
     }
-    // println!("StateDB: {:#?}", builder.sdb);
+    trace!("StateDB: {:#?}", builder.sdb);
 
-    for (address, code) in codes {
+    for (_address, code) in codes {
         let hash = H256(keccak256(&code));
         builder.codes.insert(hash, code.clone());
     }
 
+    // 5. For each step in TxExecTraces, gen the associated ops and state
+    // circuit inputs
     let block_geth_trace = cli
         .trace_block_by_number((*block_num).into())
         .await
@@ -97,5 +106,5 @@ async fn test_circuit_input_builder_block_a() {
         builder.handle_tx(tx, geth_trace).unwrap();
     }
 
-    println!("CircuitInputBuilder: {:#?}", builder);
+    trace!("CircuitInputBuilder: {:#?}", builder);
 }
