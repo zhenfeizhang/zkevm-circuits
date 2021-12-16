@@ -1228,6 +1228,7 @@ mod tests {
     use bus_mapping::eth_types::{GethExecStep, Word};
     use bus_mapping::evm::{GlobalCounter, MemoryAddress, StackAddress};
     use bus_mapping::mock;
+    use bus_mapping::state_db::{CodeDB, StateDB};
 
     use bus_mapping::operation::{MemoryOp, Operation, StackOp, StorageOp, RW};
     use halo2::dev::{
@@ -1970,9 +1971,17 @@ mod tests {
         // data to witness structured.
         let geth_steps: Vec<GethExecStep> =
             serde_json::from_str(input_trace).expect("Error on trace parsing");
+        // NOTE(@ed255): I think it would be better to replace the literal trace
+        // from this test with a dynamic trace generation using the
+        // external_tracer module from the bus-mapping. See the test at
+        // `bus-mapping/src/evm/opcodes/mstore.rs` for an example.
         let block = mock::BlockData::new_single_tx_geth_steps(geth_steps);
-        let mut builder =
-            CircuitInputBuilder::new(&block.eth_block, block.ctants.clone());
+        let mut builder = CircuitInputBuilder::new(
+            StateDB::new(),
+            CodeDB::new(),
+            &block.eth_block,
+            block.ctants.clone(),
+        );
         builder.handle_tx(&block.eth_tx, &block.geth_trace).unwrap();
 
         let stack_ops = builder.block.container.sorted_stack();
