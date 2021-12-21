@@ -182,7 +182,7 @@ pub struct EIP1186ProofResponse {
     pub storage_proof: Vec<StorageProof>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[derive(Deserialize)]
 #[doc(hidden)]
 struct GethExecStepInternal {
     pc: ProgramCounter,
@@ -262,7 +262,7 @@ impl<'de> Deserialize<'de> for GethExecStep {
         D: serde::Deserializer<'de>,
     {
         let s = GethExecStepInternal::deserialize(deserializer)?;
-        Ok(GethExecStep {
+        Ok(Self {
             pc: s.pc,
             op: s.op,
             gas: s.gas,
@@ -304,16 +304,72 @@ pub(crate) struct ResultGethExecTrace {
     pub(crate) result: GethExecTrace,
 }
 
-/// The execution trace type returned by geth RPC debug_trace* methods.
-/// Corresponds to `ExecutionResult` in `go-ethereum/internal/ethapi/api.go`.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[derive(Deserialize, Debug, Eq, PartialEq)]
 #[doc(hidden)]
-pub struct GethExecTrace {
+pub struct GethExecTraceInternal {
     pub gas: Gas,
     pub failed: bool,
     // return_value is a hex encoded byte array
     #[serde(alias = "structLogs")]
     pub struct_logs: Vec<GethExecStep>,
+}
+
+/// The execution trace type returned by geth RPC debug_trace* methods.
+/// Corresponds to `ExecutionResult` in `go-ethereum/internal/ethapi/api.go`.
+/// The deserialization truncates the memory of each step in `struct_logs` to
+/// the memory size before the expansion, so that it corresponds to the memory
+/// before the step is executed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[doc(hidden)]
+pub struct GethExecTrace {
+    pub gas: Gas,
+    pub failed: bool,
+    // return_value is a hex encoded byte array
+    pub struct_logs: Vec<GethExecStep>,
+}
+
+fn fix_geth_trace_memory_size(trace: &mut GethExecTrace) {
+    let mut mem_sizes = vec![0; trace.struct_logs.len()];
+    let mut call_mem_size_stack = Vec::new();
+    for i in 1..trace.struct_logs.len() {
+        let step_prev = &trace.struct_logs[i - 1];
+        let step = &trace.struct_logs[i];
+        mem_sizes[i] = match step.depth as isize - step_prev.depth as isize {
+            // Same call context
+            0 => step_prev.memory.0.len(),
+            // into new call context
+            1 => {
+                call_mem_size_stack.push(step_prev.memory.0.len());
+                0
+            }
+            // return from call context
+            -1 => call_mem_size_stack.pop().expect("call stack is empty"),
+            _ => unreachable!(),
+        };
+    }
+    for i in 0..trace.struct_logs.len() {
+        trace.struct_logs[i].memory.0.truncate(mem_sizes[i]);
+    }
+}
+
+impl<'de> Deserialize<'de> for GethExecTrace {
+    fn deserialize<D>(deserializer: D) -> Result<GethExecTrace, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let GethExecTraceInternal {
+            gas,
+            failed,
+            struct_logs,
+        } = GethExecTraceInternal::deserialize(deserializer)?;
+        let mut s = Self {
+            gas,
+            failed,
+            struct_logs,
+        };
+        fix_geth_trace_memory_size(&mut s);
+        Ok(s)
+    }
 }
 
 #[macro_export]
@@ -397,11 +453,11 @@ mod tests {
     ]
   }
         "#;
-        let trace: GethExecTrace = serde_json::from_str(trace_json)
-            .expect("json-deserialize GethExecTrace");
+        let trace: GethExecTraceInternal = serde_json::from_str(trace_json)
+            .expect("json-deserialize GethExecTraceInternal");
         assert_eq!(
             trace,
-            GethExecTrace {
+            GethExecTraceInternal {
                 gas: Gas(26809),
                 failed: false,
                 struct_logs: vec![
