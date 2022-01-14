@@ -13,7 +13,6 @@ use crate::{
     },
     util::Expr,
 };
-use array_init::array_init;
 use halo2::{arithmetic::FieldExt, circuit::Region, plonk::Error};
 
 #[derive(Clone, Debug)]
@@ -28,17 +27,16 @@ impl<F: FieldExt> ExecutionGadget<F> for MsizeGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::MSIZE;
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
+        let value = cb.query_rlc();
+
         // memory_size is limited to 64 bits so we only consider 8 bytes
-        let bytes = array_init(|_| cb.query_cell());
         cb.require_equal(
             "Constrain memory_size equal to stack value",
-            from_bytes::expr(&bytes),
+            from_bytes::expr(&value.cells),
             cb.curr.state.memory_size.expr(),
         );
 
         // Push the value on the stack
-        let value =
-            RandomLinearCombination::new(bytes, cb.power_of_randomness());
         cb.stack_push(value.expr());
 
         // State transition
@@ -76,7 +74,7 @@ impl<F: FieldExt> ExecutionGadget<F> for MsizeGadget<F> {
         self.value.assign(
             region,
             offset,
-            Some(step.memory_size.to_le_bytes()),
+            Some((step.memory_size as u64).to_le_bytes()),
         )?;
 
         Ok(())
