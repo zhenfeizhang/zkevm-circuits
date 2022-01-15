@@ -314,7 +314,7 @@ pub struct CallContext {
     /// Operations of state write
     pub operations: Vec<OpEnum>,
     /// Success callees' (index, rw_counter_end_of_reversion_offset), where the
-    /// later is the accumulated swc of caller at the
+    /// later is the accumulated swc of caller at the step triggering the call.
     pub success_callees: Vec<(usize, usize)>,
 }
 
@@ -350,6 +350,8 @@ impl TransactionContext {
         *index
     }
 
+    /// Return the caller's `CallContext`, which will be indexed in the second
+    /// last of call_stack.
     fn caller_ctx(&self) -> &CallContext {
         let caller_idx = self.call_stack.len() - 2;
         let (_, call_ctx) = self.call_stack.get(caller_idx).unwrap();
@@ -1094,18 +1096,36 @@ impl<'a> CircuitInputBuilder {
         eth_tx: &eth_types::Transaction,
         geth_trace: &GethExecTrace,
     ) -> Result<(), Error> {
+        // Iterate over geth_trace to inspect and collect each call's
+        // is_success, which is at the top of stack at the step after a
+        // call.
         let mut call_is_success = HashMap::new();
         let mut call_indices = Vec::new();
         for (index, geth_step) in geth_trace.struct_logs.iter().enumerate() {
             if let Some(geth_next_step) = geth_trace.struct_logs.get(index + 1)
             {
+                // Dive into call
                 if geth_step.depth + 1 == geth_next_step.depth {
                     call_indices.push(index);
+                // Emerge from call
                 } else if geth_step.depth - 1 == geth_next_step.depth {
-                    call_is_success.insert(
-                        call_indices.pop().unwrap(),
-                        !geth_next_step.stack.last()?.is_zero(),
-                    );
+                    let is_success = !geth_next_step.stack.last()?.is_zero();
+                    call_is_success
+                        .insert(call_indices.pop().unwrap(), is_success);
+                // When callee doesn't have code for execution, the depth won't
+                // chagne, so we need to catch such cases here.
+                } else if matches!(
+                    geth_step.op,
+                    OpcodeId::CREATE
+                        | OpcodeId::CALL
+                        | OpcodeId::CALLCODE
+                        | OpcodeId::DELEGATECALL
+                        | OpcodeId::CREATE2
+                        | OpcodeId::STATICCALL
+                ) {
+                    call_indices.push(index);
+                    let is_success = !geth_next_step.stack.last()?.is_zero();
+                    call_is_success.insert(index, is_success);
                 }
             }
         }

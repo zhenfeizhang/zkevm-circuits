@@ -121,7 +121,6 @@
 //! let mut builder = CircuitInputBuilder::new(
 //!     sdb,
 //!     CodeDB::new(),
-//!     &eth_block,
 //!     ctants.clone(),
 //!     BlockConstants::from_eth_block(
 //!         &eth_block,

@@ -116,6 +116,9 @@ impl fmt::Debug for Gas {
     }
 }
 
+/// Gas stipend when CALL or CALLCODE is attached with value.
+pub const GAS_STIPEND_CALL_WITH_VALUE: u64 = 2300;
+
 /// Defines the gas consumed by an
 /// [`ExecStep`](crate::circuit_input_builder::ExecStep).
 #[derive(

@@ -1,6 +1,7 @@
 use super::Opcode;
 use crate::circuit_input_builder::CircuitInputStateRef;
 use crate::eth_types::{GethExecStep, ToWord};
+use crate::evm::GAS_STIPEND_CALL_WITH_VALUE;
 use crate::operation::{
     AccountField, AccountOp, CallContextField, CallContextOp, StackOp,
     TxAccessListAccountOp,
@@ -17,9 +18,15 @@ impl Opcode for Call {
         state: &mut CircuitInputStateRef,
         steps: &[GethExecStep],
     ) -> Result<(), Error> {
+        // TODO: tx_id should be retrievable somewhere.
         let tx_id = 1;
+
+        // Currently we do `handle_call_create` before `gen_associated_ops`, so
+        // the one that triggers this step is `caller_call`. And the call it
+        // triggers is already prepared as `call`.
         let caller_call = state.caller_call().clone();
         let call = state.call().clone();
+
         let step = &steps[0];
         let next_step = &steps[1];
 
@@ -176,7 +183,11 @@ impl Opcode for Call {
                 (step.gas.0
                     - step.gas_cost.0
                     - (next_step.gas.0
-                        - if call.value.is_zero() { 0 } else { 2300 }))
+                        - if call.value.is_zero() {
+                            0
+                        } else {
+                            GAS_STIPEND_CALL_WITH_VALUE
+                        }))
                 .into(),
             ),
             (

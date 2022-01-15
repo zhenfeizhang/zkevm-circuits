@@ -27,7 +27,7 @@ use crate::{
 };
 use bus_mapping::{
     eth_types::{ToLittleEndian, ToScalar},
-    evm::GasCost,
+    evm::{GasCost, GAS_STIPEND_CALL_WITH_VALUE},
 };
 use halo2::{arithmetic::FieldExt, circuit::Region, plonk::Error};
 
@@ -305,7 +305,8 @@ impl<F: FieldExt> ExecutionGadget<F> for CallGadget<F> {
         }
 
         // Give gas stipend if value is not zero
-        let callee_gas_left = callee_gas_left + has_value * 2300.expr();
+        let callee_gas_left =
+            callee_gas_left + has_value * GAS_STIPEND_CALL_WITH_VALUE.expr();
 
         cb.require_step_state_transition(StepStateTransition {
             rw_counter: Delta(44.expr()),

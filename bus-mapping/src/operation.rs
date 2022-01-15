@@ -86,8 +86,8 @@ impl fmt::Debug for MemoryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("MemoryOp { ")?;
         f.write_fmt(format_args!(
-            "{:?}, addr: {:?}, value: 0x{:02x}",
-            self.rw, self.address, self.value
+            "{:?}, call_id: {:?}, addr: {:?}, value: 0x{:02x}",
+            self.rw, self.call_id, self.address, self.value
         ))?;
         f.write_str(" }")
     }
@@ -173,8 +173,8 @@ impl fmt::Debug for StackOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("StackOp { ")?;
         f.write_fmt(format_args!(
-            "{:?}, addr: {:?}, val: 0x{:x}",
-            self.rw, self.address, self.value
+            "{:?}, call_id: {:?}, addr: {:?}, val: 0x{:x}",
+            self.rw, self.call_id, self.address, self.value
         ))?;
         f.write_str(" }")
     }
@@ -648,8 +648,8 @@ impl fmt::Debug for CallContextOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("CallContextOp { ")?;
         f.write_fmt(format_args!(
-            "call_id: {:?}, field: {:?}, value: {:?}",
-            self.call_id, self.field, self.value,
+            "{:?}, call_id: {:?}, field: {:?}, value: {:?}",
+            self.rw, self.call_id, self.field, self.value,
         ))?;
         f.write_str(" }")
     }
