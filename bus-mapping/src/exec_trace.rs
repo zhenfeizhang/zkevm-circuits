@@ -22,6 +22,7 @@ impl fmt::Debug for OperationRef {
                 Target::TxRefund => "TxRefund",
                 Target::Account => "Account",
                 Target::AccountDestructed => "AccountDestructed",
+                Target::CallContext => "CallContext",
             },
             self.1
         ))
@@ -45,6 +46,7 @@ impl From<(Target, usize)> for OperationRef {
             Target::AccountDestructed => {
                 Self(Target::AccountDestructed, op_ref_data.1)
             }
+            Target::CallContext => Self(Target::CallContext, op_ref_data.1),
         }
     }
 }

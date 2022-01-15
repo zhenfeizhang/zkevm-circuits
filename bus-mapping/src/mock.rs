@@ -9,7 +9,6 @@ use crate::external_tracer::BlockConstants;
 use crate::state_db::{self, CodeDB, StateDB};
 use crate::Error;
 use lazy_static::lazy_static;
-use std::collections::HashMap;
 
 /// Mock chain ID
 pub const CHAIN_ID: u64 = 1338;
@@ -115,28 +114,22 @@ impl BlockData {
         let b_constant = BlockConstants::from_eth_block(
             &eth_block,
             &Word::from(c_constant.chain_id),
+            Default::default(),
         );
         let tracer_tx = external_tracer::Transaction::from_eth_tx(&eth_tx);
-        let geth_trace = eth_types::GethExecTrace {
-            gas: Gas(eth_tx.gas.as_u64()),
-            failed: false,
-            struct_logs: external_tracer::trace(
-                &b_constant,
-                &tracer_tx,
-                accounts,
-            )?
-            .to_vec(),
-        };
+        let geth_trace =
+            external_tracer::trace(&b_constant, &tracer_tx, accounts)?;
         let mut sdb = StateDB::new();
         let mut code_db = CodeDB::new();
+        sdb.set_account(&eth_tx.from, state_db::Account::zero());
         for account in accounts {
             let code_hash = code_db.insert(account.code.to_vec());
             sdb.set_account(
                 &account.address,
                 state_db::Account {
-                    nonce: Word::zero(),
+                    nonce: account.nonce,
                     balance: account.balance,
-                    storage: HashMap::new(),
+                    storage: account.storage.clone(),
                     code_hash,
                 },
             );
@@ -223,6 +216,7 @@ impl BlockData {
         let b_constant = BlockConstants::from_eth_block(
             &eth_block,
             &Word::from(c_constant.chain_id),
+            Default::default(),
         );
         let geth_trace = eth_types::GethExecTrace {
             gas: Gas(eth_tx.gas.as_u64()),
@@ -248,7 +242,6 @@ impl BlockData {
         CircuitInputBuilder::new(
             self.sdb.clone(),
             self.code_db.clone(),
-            &self.eth_block,
             self.c_constant.clone(),
             self.b_constant.clone(),
         )
@@ -259,17 +252,19 @@ impl BlockData {
 /// tests.
 pub fn new_tracer_tx() -> external_tracer::Transaction {
     external_tracer::Transaction {
-        origin: *COINBASE,
+        from: *COINBASE,
+        to: Some(Address::zero()),
         gas_limit: Word::from(1_000_000u64),
-        target: Address::zero(),
+        ..Default::default()
     }
 }
 
 /// Generate a new mock tracer Account with preloaded data, useful for tests.
 pub fn new_tracer_account(code: &Bytecode) -> external_tracer::Account {
     external_tracer::Account {
-        address: new_tracer_tx().target,
+        address: new_tracer_tx().to.unwrap(),
         balance: Word::from(555u64),
         code: Bytes::from(code.to_vec()),
+        ..Default::default()
     }
 }

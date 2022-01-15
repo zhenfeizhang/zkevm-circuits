@@ -150,8 +150,8 @@ impl<F: FieldExt> ExecutionGadget<F> for MemoryGadget<F> {
         region: &mut Region<'_, F>,
         offset: usize,
         block: &Block<F>,
-        _: &Transaction<F>,
-        _: &Call<F>,
+        _: &Transaction,
+        _: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
@@ -208,18 +208,13 @@ mod test {
     };
     use bus_mapping::{
         bytecode,
-        eth_types::Word,
-        evm::{Gas, GasCost, OpcodeId},
+        eth_types::{Address, Transaction, Word},
+        evm::{GasCost, OpcodeId},
+        external_tracer,
     };
     use std::iter;
 
-    fn test_ok(
-        opcode: OpcodeId,
-        address: Word,
-        value: Word,
-        _memory_size: u64,
-        gas_cost: u64,
-    ) {
+    fn test_ok(opcode: OpcodeId, address: Word, value: Word, gas_cost: u64) {
         let bytecode = bytecode! {
             PUSH32(value)
             PUSH32(address)
@@ -228,20 +223,18 @@ mod test {
             STOP
         };
 
-        let gas = Gas(gas_cost + 100_000); // add extra gas for the pushes
-        let mut block_trace =
-            bus_mapping::mock::BlockData::new_single_tx_trace_code_gas(
-                &bytecode, gas,
-            )
-            .unwrap();
-        block_trace.geth_trace.struct_logs = block_trace.geth_trace.struct_logs
-            [bytecode.get_pos("start")..]
-            .to_vec();
-        let mut builder = block_trace.new_circuit_input_builder();
-        builder
-            .handle_tx(&block_trace.eth_tx, &block_trace.geth_trace)
-            .unwrap();
-        let block = witness::block_convert(bytecode.code(), &builder.block);
+        let block = witness::build_block(
+            &[external_tracer::Account {
+                code: bytecode.code().to_vec().into(),
+                ..Default::default()
+            }],
+            Transaction {
+                from: Address::repeat_byte(0xff),
+                to: Some(Address::zero()),
+                gas: (gas_cost + 21006).into(),
+                ..Default::default()
+            },
+        );
         assert_eq!(run_test_circuit_incomplete_fixed_table(block), Ok(()));
     }
 
@@ -251,15 +244,12 @@ mod test {
             OpcodeId::MSTORE,
             Word::from(0x12FFFF),
             Word::from_big_endian(&(1..33).collect::<Vec<_>>()),
-            38913,
             3074206,
         );
-
         test_ok(
             OpcodeId::MLOAD,
             Word::from(0x12FFFF),
             Word::from_big_endian(&(1..33).collect::<Vec<_>>()),
-            38913,
             3074206,
         );
         test_ok(
@@ -268,44 +258,46 @@ mod test {
             Word::from_big_endian(
                 &(17..33).chain(iter::repeat(0).take(16)).collect::<Vec<_>>(),
             ),
-            38914,
             3074361,
         );
         test_ok(
             OpcodeId::MSTORE8,
             Word::from(0x12FFFF),
             Word::from_big_endian(&(1..33).collect::<Vec<_>>()),
-            38912,
             3074051,
         );
     }
 
     #[test]
     fn memory_gadget_rand() {
-        let calc_memory_size_and_gas_cost = |opcode, address: Word| {
-            let memory_size = (address.as_u64()
+        let calc_gas_cost = |opcode, memory_address: Word| {
+            let memory_address = memory_address.as_u64()
                 + match opcode {
                     OpcodeId::MSTORE | OpcodeId::MLOAD => 32,
                     OpcodeId::MSTORE8 => 1,
                     _ => 0,
                 }
-                + 31)
-                / 32;
-            let gas_cost = memory_size * memory_size / 512
+                + 31;
+            let memory_size = memory_address / 32;
+
+            GasCost::FASTEST.as_u64()
                 + 3 * memory_size
-                + GasCost::FASTEST.as_u64();
-            (memory_size, gas_cost)
+                + memory_size * memory_size / 512
         };
 
         for opcode in [OpcodeId::MSTORE, OpcodeId::MLOAD, OpcodeId::MSTORE8] {
             // we use 15-bit here to reduce testing resource consumption.
-            // In real cases the address is 5 bytes (40 bits)
-            let max_memory_size_pow_of_two = 15;
-            let address = rand_word() % (1u64 << max_memory_size_pow_of_two);
+            // In real cases the memory_address is 5 bytes (40 bits)
+            let max_memory_address_pow_of_two = 15;
+            let memory_address =
+                rand_word() % (1u64 << max_memory_address_pow_of_two);
             let value = rand_word();
-            let (memory_size, gas_cost) =
-                calc_memory_size_and_gas_cost(opcode, address);
-            test_ok(opcode, address, value, memory_size, gas_cost);
+            test_ok(
+                opcode,
+                memory_address,
+                value,
+                calc_gas_cost(opcode, memory_address),
+            );
         }
     }
 }

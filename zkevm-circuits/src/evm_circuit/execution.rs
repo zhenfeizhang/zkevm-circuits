@@ -20,6 +20,7 @@ mod add;
 mod begin_tx;
 mod bitwise;
 mod byte;
+mod call;
 mod coinbase;
 mod comparator;
 mod dup;
@@ -41,6 +42,7 @@ use add::AddGadget;
 use begin_tx::BeginTxGadget;
 use bitwise::BitwiseGadget;
 use byte::ByteGadget;
+use call::CallGadget;
 use coinbase::CoinbaseGadget;
 use comparator::ComparatorGadget;
 use dup::DupGadget;
@@ -70,8 +72,8 @@ pub(crate) trait ExecutionGadget<F: FieldExt> {
         region: &mut Region<'_, F>,
         offset: usize,
         block: &Block<F>,
-        transaction: &Transaction<F>,
-        call: &Call<F>,
+        transaction: &Transaction,
+        call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error>;
 }
@@ -87,6 +89,7 @@ pub(crate) struct ExecutionConfig<F> {
     bitwise_gadget: BitwiseGadget<F>,
     begin_tx_gadget: BeginTxGadget<F>,
     byte_gadget: ByteGadget<F>,
+    call_gadget: CallGadget<F>,
     comparator_gadget: ComparatorGadget<F>,
     dup_gadget: DupGadget<F>,
     error_oog_pure_memory_gadget: ErrorOOGPureMemoryGadget<F>,
@@ -215,6 +218,7 @@ impl<F: FieldExt> ExecutionConfig<F> {
             bitwise_gadget: configure_gadget!(),
             begin_tx_gadget: configure_gadget!(),
             byte_gadget: configure_gadget!(),
+            call_gadget: configure_gadget!(),
             comparator_gadget: configure_gadget!(),
             dup_gadget: configure_gadget!(),
             error_oog_pure_memory_gadget: configure_gadget!(),
@@ -451,11 +455,18 @@ impl<F: FieldExt> ExecutionConfig<F> {
         region: &mut Region<'_, F>,
         offset: usize,
         block: &Block<F>,
-        transaction: &Transaction<F>,
-        call: &Call<F>,
+        transaction: &Transaction,
+        call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        self.step.assign_exec_step(region, offset, call, step)?;
+        self.step.assign_exec_step(
+            region,
+            offset,
+            block,
+            transaction,
+            call,
+            step,
+        )?;
 
         for (cell, value) in self
             .presets_map
@@ -502,6 +513,7 @@ impl<F: FieldExt> ExecutionConfig<F> {
             ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
             ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
             ExecutionState::COINBASE => assign_exec_step!(self.coinbase_gadget),
+            ExecutionState::CALL => assign_exec_step!(self.call_gadget),
             ExecutionState::ErrorOutOfGasPureMemory => {
                 assign_exec_step!(self.error_oog_pure_memory_gadget)
             }

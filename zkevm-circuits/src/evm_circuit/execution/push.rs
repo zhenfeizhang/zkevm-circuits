@@ -32,6 +32,7 @@ impl<F: FieldExt> ExecutionGadget<F> for PushGadget<F> {
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
         let opcode = cb.query_cell();
 
+        let value = cb.query_rlc();
         // Query selectors for each opcode_lookup
         let selectors = array_init(|_| cb.query_bool());
 
@@ -48,10 +49,10 @@ impl<F: FieldExt> ExecutionGadget<F> for PushGadget<F> {
         //                           ▼                     ▼
         //   [byte31,     ...,     byte2,     byte1,     byte0]
         //
-        let bytes = array_init(|idx| {
+        for idx in 0..32 {
+            let byte = &value.cells[idx];
             let index = cb.curr.state.program_counter.expr() + opcode.expr()
                 - (OpcodeId::PUSH1.as_u8() - 1 + idx as u8).expr();
-            let byte = cb.query_cell();
             if idx == 0 {
                 cb.opcode_lookup_at(index, byte.expr(), 0.expr())
             } else {
@@ -59,8 +60,7 @@ impl<F: FieldExt> ExecutionGadget<F> for PushGadget<F> {
                     cb.opcode_lookup_at(index, byte.expr(), 0.expr())
                 });
             }
-            byte
-        });
+        }
 
         for idx in 0..31 {
             let selector_prev = if idx == 0 {
@@ -78,7 +78,8 @@ impl<F: FieldExt> ExecutionGadget<F> for PushGadget<F> {
             // byte should be 0 when selector is 0
             cb.require_zero(
                 "Constrain byte == 0 when selector == 0",
-                bytes[idx + 1].expr() * (1.expr() - selectors[idx].expr()),
+                value.cells[idx + 1].expr()
+                    * (1.expr() - selectors[idx].expr()),
             );
         }
 
@@ -95,7 +96,6 @@ impl<F: FieldExt> ExecutionGadget<F> for PushGadget<F> {
         );
 
         // Push the value on the stack
-        let value = Word::new(bytes, cb.power_of_randomness());
         cb.stack_push(value.expr());
 
         // State transition
@@ -127,8 +127,8 @@ impl<F: FieldExt> ExecutionGadget<F> for PushGadget<F> {
         region: &mut Region<'_, F>,
         offset: usize,
         block: &Block<F>,
-        _: &Transaction<F>,
-        _: &Call<F>,
+        _: &Transaction,
+        _: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;

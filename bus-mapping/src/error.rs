@@ -3,6 +3,7 @@
 use crate::eth_types::{Address, GethExecStep, Word};
 use core::fmt::{Display, Formatter, Result as FmtResult};
 use ethers_providers::ProviderError;
+use geth_utils::Error as TracingError;
 use std::error::Error as StdError;
 
 /// Error type for any BusMapping related failure.
@@ -28,7 +29,7 @@ pub enum Error {
     /// `MemoryAddress`.
     WordToMemAddr,
     /// Error while generating a trace.
-    TracingError,
+    TracingError(TracingError),
     /// JSON-RPC related error.
     JSONRpcError(ProviderError),
     /// OpcodeId is not a call type.
@@ -37,10 +38,13 @@ pub enum Error {
     AccountNotFound(Address),
     /// Storage key not found in the StateDB
     StorageKeyNotFound(Address, Word),
+    /// Invalid [`crate::eth_types::GethExecTrace`] due to an unexpected form
+    /// of it.
+    InvalidGethExecTrace(&'static str),
     /// Unable to figure out error at a [`GethExecStep`]
-    UnexpectedExecStepError(&'static str, Box<GethExecStep>),
+    UnexpectedExecStepError(&'static str, GethExecStep),
     /// Invalid [`GethExecStep`] due to an invalid/unexpected value in it.
-    InvalidGethExecStep(&'static str, Box<GethExecStep>),
+    InvalidGethExecStep(&'static str, GethExecStep),
 }
 
 impl From<ProviderError> for Error {

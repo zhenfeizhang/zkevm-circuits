@@ -1,7 +1,14 @@
 //! Definition of each opcode of the EVM.
+use crate::circuit_input_builder::CircuitInputStateRef;
+use crate::eth_types::GethExecStep;
+use crate::Error;
+use core::fmt::Debug;
+
+pub mod ids;
+
+mod call;
 mod coinbase;
 mod dup;
-pub mod ids;
 mod jump;
 mod jumpdest;
 mod jumpi;
@@ -15,24 +22,21 @@ mod sload;
 mod stackonlyop;
 mod stop;
 mod swap;
-use crate::circuit_input_builder::CircuitInputStateRef;
-use crate::eth_types::GethExecStep;
-use crate::Error;
-use core::fmt::Debug;
-use ids::OpcodeId;
-use log::warn;
 
-use self::push::Push;
+use call::Call;
 use coinbase::Coinbase;
 use dup::Dup;
+use ids::OpcodeId;
 use jump::Jump;
 use jumpdest::Jumpdest;
 use jumpi::Jumpi;
+use log::warn;
 use mload::Mload;
 use msize::Msize;
 use mstore::Mstore;
 use pc::Pc;
 use pop::Pop;
+use push::Push;
 use sload::Sload;
 use stackonlyop::StackOnlyOpcode;
 use stop::Stop;
@@ -202,7 +206,7 @@ impl OpcodeId {
             // OpcodeId::LOG3 => {},
             // OpcodeId::LOG4 => {},
             // OpcodeId::CREATE => {},
-            // OpcodeId::CALL => {},
+            OpcodeId::CALL => Call::gen_associated_ops,
             // OpcodeId::CALLCODE => {},
             // OpcodeId::RETURN => {},
             // OpcodeId::DELEGATECALL => {},

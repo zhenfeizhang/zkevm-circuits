@@ -1,12 +1,12 @@
 use crate::{
     evm_circuit::{
         param::{N_CELLS_STEP_STATE, STEP_HEIGHT, STEP_WIDTH},
-        util::Cell,
-        witness::{Call, ExecStep},
+        util::{Cell, RandomLinearCombination},
+        witness::{Block, Call, CodeSource, ExecStep, Transaction},
     },
     util::Expr,
 };
-use bus_mapping::evm::OpcodeId;
+use bus_mapping::{eth_types::ToLittleEndian, evm::OpcodeId};
 use halo2::{
     arithmetic::FieldExt,
     circuit::Region,
@@ -393,14 +393,14 @@ pub(crate) struct StepState<F> {
     pub(crate) is_root: Cell<F>,
     pub(crate) is_create: Cell<F>,
     // This is the identifier of current executed bytecode, which is used to
-    // lookup current executed opcode and used to do code copy. In most time,
+    // lookup current executed code and used to do code copy. In most time,
     // it would be bytecode_hash, but when it comes to root creation call, the
     // executed bytecode is actually from transaction calldata, so it might be
     // tx_id if we decide to lookup different table.
     // However, how to handle root creation call is yet to be determined, see
     // issue https://github.com/appliedzkp/zkevm-specs/issues/73 for more
     // discussion.
-    pub(crate) opcode_source: Cell<F>,
+    pub(crate) code_source: Cell<F>,
     pub(crate) program_counter: Cell<F>,
     pub(crate) stack_pointer: Cell<F>,
     pub(crate) gas_left: Cell<F>,
@@ -454,7 +454,7 @@ impl<F: FieldExt> Step<F> {
                 call_id: cells.pop_front().unwrap(),
                 is_root: cells.pop_front().unwrap(),
                 is_create: cells.pop_front().unwrap(),
-                opcode_source: cells.pop_front().unwrap(),
+                code_source: cells.pop_front().unwrap(),
                 program_counter: cells.pop_front().unwrap(),
                 stack_pointer: cells.pop_front().unwrap(),
                 gas_left: cells.pop_front().unwrap(),
@@ -494,7 +494,9 @@ impl<F: FieldExt> Step<F> {
         &self,
         region: &mut Region<'_, F>,
         offset: usize,
-        call: &Call<F>,
+        block: &Block<F>,
+        _: &Transaction,
+        call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
         for (idx, cell) in self.state.execution_state.iter().enumerate() {
@@ -528,11 +530,18 @@ impl<F: FieldExt> Step<F> {
             offset,
             Some(F::from(call.is_create as u64)),
         )?;
-        self.state.opcode_source.assign(
-            region,
-            offset,
-            Some(call.opcode_source),
-        )?;
+        match call.code_source {
+            CodeSource::Account(code_hash) => {
+                self.state.code_source.assign(
+                    region,
+                    offset,
+                    Some(RandomLinearCombination::random_linear_combine(
+                        code_hash.to_le_bytes(),
+                        block.randomness,
+                    )),
+                )?;
+            }
+        }
         self.state.program_counter.assign(
             region,
             offset,

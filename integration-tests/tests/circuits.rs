@@ -1,4 +1,4 @@
-#![cfg(feature = "circuits")]
+// #![cfg(feature = "circuits")]
 
 use bus_mapping::circuit_input_builder::BuilderClient;
 use halo2::dev::MockProver;
@@ -27,7 +27,7 @@ mod test_evm_circuit {
     use zkevm_circuits::evm_circuit::{
         param::STEP_HEIGHT,
         table::FixedTableTag,
-        witness::{Block, Bytecode, Rw, Transaction},
+        witness::{Block, Bytecode, RwMap, Transaction},
         EvmCircuit,
     };
 
@@ -43,7 +43,7 @@ mod test_evm_circuit {
         fn load_txs(
             &self,
             layouter: &mut impl Layouter<F>,
-            txs: &[Transaction<F>],
+            txs: &[Transaction],
             randomness: F,
         ) -> Result<(), Error> {
             layouter.assign_region(
@@ -82,7 +82,7 @@ mod test_evm_circuit {
         fn load_rws(
             &self,
             layouter: &mut impl Layouter<F>,
-            rws: &[Rw],
+            rws: &RwMap,
             randomness: F,
         ) -> Result<(), Error> {
             layouter.assign_region(
@@ -99,7 +99,7 @@ mod test_evm_circuit {
                     }
                     offset += 1;
 
-                    for rw in rws.iter() {
+                    for rw in rws.0.values().flat_map(|rws| rws.iter()) {
                         for (column, value) in self
                             .rw_table
                             .iter()
@@ -243,7 +243,9 @@ mod test_evm_circuit {
                 &self.block.bytecodes,
                 self.block.randomness,
             )?;
-            config.evm_circuit.assign_block(&mut layouter, &self.block)
+            config
+                .evm_circuit
+                .assign_block_exact(&mut layouter, &self.block)
         }
     }
 
@@ -301,13 +303,7 @@ async fn test_evm_circuit_block_a() {
     let builder = cli.gen_inputs(*block_num).await.unwrap();
 
     // Generate evm_circuit proof
-    let code_hash = builder.block.txs()[0].calls()[0].code_hash;
-    let bytecode = builder
-        .code_db
-        .0
-        .get(&code_hash)
-        .expect("code_hash not found");
-    let block = block_convert(bytecode, &builder.block);
+    let block = block_convert(&builder.block, &builder.code_db);
     run_test_circuit_complete_fixed_table(block)
         .expect("evm_circuit verification failed");
 }
