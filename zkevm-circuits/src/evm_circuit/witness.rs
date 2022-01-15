@@ -408,7 +408,7 @@ impl Rw {
                 value_prev,
             } => {
                 let to_scalar = |value: &Word| match field_tag {
-                    AccountFieldTag::Nonce => F::from(value.low_u64()),
+                    AccountFieldTag::Nonce => value.to_scalar().unwrap(),
                     _ => RandomLinearCombination::random_linear_combine(
                         value.to_le_bytes(),
                         randomness,
@@ -448,7 +448,7 @@ impl Rw {
                     CallContextFieldTag::CallerAddress
                     | CallContextFieldTag::CalleeAddress
                     | CallContextFieldTag::Result => value.to_scalar().unwrap(),
-                    _ => F::from(value.low_u64()),
+                    _ => value.to_scalar().unwrap(),
                 },
                 F::zero(),
                 F::zero(),

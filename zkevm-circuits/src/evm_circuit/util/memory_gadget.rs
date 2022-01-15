@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use crate::{
     evm_circuit::{
         param::{N_BYTES_GAS, N_BYTES_MEMORY_ADDRESS, N_BYTES_MEMORY_SIZE},
@@ -20,6 +18,7 @@ use bus_mapping::{
 };
 use halo2::plonk::Error;
 use halo2::{arithmetic::FieldExt, circuit::Region, plonk::Expression};
+use std::convert::TryInto;
 
 /// Decodes the usable part of an address stored in a Word
 pub(crate) mod address_low {
@@ -33,9 +32,10 @@ pub(crate) mod address_low {
         from_bytes::expr(&address.cells[..N_BYTES_MEMORY_ADDRESS])
     }
 
-    pub(crate) fn value<F: FieldExt>(address: [u8; 32]) -> u64 {
-        from_bytes::value::<F>(&address[..N_BYTES_MEMORY_ADDRESS])
-            .get_lower_128() as u64
+    pub(crate) fn value(address: [u8; 32]) -> u64 {
+        let mut bytes = [0; 8];
+        bytes.copy_from_slice(&address[..N_BYTES_MEMORY_ADDRESS]);
+        u64::from_le_bytes(bytes)
     }
 }
 
@@ -138,7 +138,8 @@ impl<F: FieldExt> MemoryAddressGadget<F> {
         Ok(if memory_length_is_zero {
             0
         } else {
-            memory_offset.low_u64() + memory_length.low_u64()
+            address_low::value(memory_offset_bytes)
+                + address_low::value(memory_length_bytes)
         })
     }
 
