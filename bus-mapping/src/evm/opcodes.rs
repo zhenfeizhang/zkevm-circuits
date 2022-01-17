@@ -7,6 +7,8 @@ use core::fmt::Debug;
 pub mod ids;
 
 mod call;
+mod caller;
+mod callvalue;
 mod coinbase;
 mod dup;
 mod jump;
@@ -24,6 +26,8 @@ mod stop;
 mod swap;
 
 use call::Call;
+use caller::Caller;
+use callvalue::Callvalue;
 use coinbase::Coinbase;
 use dup::Dup;
 use ids::OpcodeId;
@@ -102,8 +106,8 @@ impl OpcodeId {
             // OpcodeId::ADDRESS => {},
             // OpcodeId::BALANCE => {},
             // OpcodeId::ORIGIN => {},
-            // OpcodeId::CALLER => {},
-            // OpcodeId::CALLVALUE => {},
+            OpcodeId::CALLER => Caller::gen_associated_ops,
+            OpcodeId::CALLVALUE => Callvalue::gen_associated_ops,
             // OpcodeId::CALLDATALOAD => {},
             // OpcodeId::CALLDATASIZE => {},
             // OpcodeId::CALLDATACOPY => {},
