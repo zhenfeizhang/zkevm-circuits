@@ -790,14 +790,20 @@ impl<'a> CircuitInputStateRef<'a> {
                         let (_, account) =
                             self.sdb.get_storage_mut(&op.address, &op.key);
                         *account = op.value;
-                        self.push_op(op);
+                        self.block.container.insert(Operation::new(
+                            self.block_ctx.rwc.inc_pre(),
+                            op,
+                        ));
                     }
                     OpEnum::TxAccessListAccount(op) => {
                         if !op.value {
                             self.sdb
                                 .remove_account_from_access_list(&op.address);
                         }
-                        self.push_op(op);
+                        self.block.container.insert(Operation::new(
+                            self.block_ctx.rwc.inc_pre(),
+                            op,
+                        ));
                     }
                     OpEnum::TxAccessListAccountStorage(op) => {
                         if !op.value {
@@ -805,7 +811,10 @@ impl<'a> CircuitInputStateRef<'a> {
                                 &(op.address, op.key),
                             );
                         }
-                        self.push_op(op);
+                        self.block.container.insert(Operation::new(
+                            self.block_ctx.rwc.inc_pre(),
+                            op,
+                        ));
                     }
                     OpEnum::Account(op) => {
                         let (_, account) =
@@ -818,7 +827,10 @@ impl<'a> CircuitInputStateRef<'a> {
                                     op.value.to_be_bytes().into()
                             }
                         }
-                        self.push_op(op);
+                        self.block.container.insert(Operation::new(
+                            self.block_ctx.rwc.inc_pre(),
+                            op,
+                        ));
                     }
                     _ => unreachable!(),
                 }
