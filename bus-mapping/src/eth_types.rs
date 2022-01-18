@@ -4,8 +4,7 @@ use crate::evm::{memory::Memory, stack::Stack, storage::Storage};
 use crate::evm::{Gas, GasCost, OpcodeId, ProgramCounter};
 use ethers_core::types;
 pub use ethers_core::types::{
-    transaction::response::Transaction, Address, Block, Bytes, H160, H256,
-    U256, U64,
+    transaction::response::Transaction, Address, Block, Bytes, H160, H256, U256, U64,
 };
 use pairing::arithmetic::FieldExt;
 use serde::{de, Deserialize};
@@ -268,9 +267,7 @@ impl<'de> Deserialize<'de> for GethExecStep {
             gas_cost: s.gas_cost,
             depth: s.depth,
             error: s.error,
-            stack: Stack(
-                s.stack.iter().map(|dw| dw.to_word()).collect::<Vec<Word>>(),
-            ),
+            stack: Stack(s.stack.iter().map(|dw| dw.to_word()).collect::<Vec<Word>>()),
             memory: Memory::from(
                 s.memory
                     .iter()
@@ -379,8 +376,7 @@ impl<'de> Deserialize<'de> for GethExecTrace {
 macro_rules! address {
     ($addr_hex:expr) => {{
         use std::str::FromStr;
-        $crate::eth_types::Address::from_str(&$addr_hex)
-            .expect("invalid hex Address")
+        $crate::eth_types::Address::from_str(&$addr_hex).expect("invalid hex Address")
     }};
 }
 
@@ -388,8 +384,7 @@ macro_rules! address {
 /// Create a [`Word`] from a hex string.  Panics on invalid input.
 macro_rules! word {
     ($word_hex:expr) => {
-        $crate::eth_types::Word::from_str_radix(&$word_hex, 16)
-            .expect("invalid hex Word")
+        $crate::eth_types::Word::from_str_radix(&$word_hex, 16).expect("invalid hex Word")
     };
 }
 
@@ -455,8 +450,8 @@ mod tests {
     ]
   }
         "#;
-        let trace: GethExecTraceInternal = serde_json::from_str(trace_json)
-            .expect("json-deserialize GethExecTraceInternal");
+        let trace: GethExecTraceInternal =
+            serde_json::from_str(trace_json).expect("json-deserialize GethExecTraceInternal");
         assert_eq!(
             trace,
             GethExecTraceInternal {
@@ -481,17 +476,9 @@ mod tests {
                         gas_cost: GasCost(2100),
                         depth: 1,
                         error: None,
-                        stack: Stack(vec![
-                            word!("0x1003e2d2"),
-                            word!("0x2a"),
-                            word!("0x0")
-                        ]),
+                        stack: Stack(vec![word!("0x1003e2d2"), word!("0x2a"), word!("0x0")]),
                         storage: Storage(word_map!("0x0" => "0x6f")),
-                        memory: Memory::from(vec![
-                            word!("0x0"),
-                            word!("0x0"),
-                            word!("0x080")
-                        ]),
+                        memory: Memory::from(vec![word!("0x0"), word!("0x0"), word!("0x080")]),
                     }
                 ],
             }
@@ -510,19 +497,17 @@ mod eth_types_test {
     fn address() {
         // Test from_str
         assert_eq!(
-            Address::from_str("0x9a0C63EBb78B35D7c209aFbD299B056098b5439b")
-                .unwrap(),
+            Address::from_str("0x9a0C63EBb78B35D7c209aFbD299B056098b5439b").unwrap(),
             Address::from([
-                154, 12, 99, 235, 183, 139, 53, 215, 194, 9, 175, 189, 41, 155,
-                5, 96, 152, 181, 67, 155
+                154, 12, 99, 235, 183, 139, 53, 215, 194, 9, 175, 189, 41, 155, 5, 96, 152, 181,
+                67, 155
             ])
         );
         assert_eq!(
-            Address::from_str("9a0C63EBb78B35D7c209aFbD299B056098b5439b")
-                .unwrap(),
+            Address::from_str("9a0C63EBb78B35D7c209aFbD299B056098b5439b").unwrap(),
             Address::from([
-                154, 12, 99, 235, 183, 139, 53, 215, 194, 9, 175, 189, 41, 155,
-                5, 96, 152, 181, 67, 155
+                154, 12, 99, 235, 183, 139, 53, 215, 194, 9, 175, 189, 41, 155, 5, 96, 152, 181,
+                67, 155
             ])
         );
 
@@ -581,8 +566,7 @@ mod eth_types_test {
 
     #[test]
     fn word_from_str() -> Result<(), Error> {
-        let word_str =
-            "000000000000000000000000000000000000000000000000000c849c24f39248";
+        let word_str = "000000000000000000000000000000000000000000000000000c849c24f39248";
 
         let word_from_u128 = Word::from(3523505890234952u128);
         let word_from_str = Word::from_str(word_str).unwrap();

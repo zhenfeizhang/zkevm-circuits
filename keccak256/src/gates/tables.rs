@@ -1,6 +1,4 @@
-use crate::arith_helpers::{
-    convert_b13_coef, convert_b9_coef, f_from_radix_be, B13, B2, B9,
-};
+use crate::arith_helpers::{convert_b13_coef, convert_b9_coef, f_from_radix_be, B13, B2, B9};
 use crate::common::LANE_SIZE;
 use crate::gates::rho_helpers::{get_block_count, BASE_NUM_OF_CHUNKS};
 use halo2::{
@@ -29,10 +27,7 @@ pub struct Base13toBase9TableConfig<F> {
 }
 
 impl<F: FieldExt> Base13toBase9TableConfig<F> {
-    pub(crate) fn load(
-        &self,
-        layouter: &mut impl Layouter<F>,
-    ) -> Result<(), Error> {
+    pub(crate) fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         layouter.assign_table(
             || "13 -> 9",
             |mut table| {
@@ -67,10 +62,7 @@ impl<F: FieldExt> Base13toBase9TableConfig<F> {
                         i,
                         || {
                             Ok(F::from(
-                                get_block_count(
-                                    b13_chunks.clone().try_into().unwrap(),
-                                )
-                                .into(),
+                                get_block_count(b13_chunks.clone().try_into().unwrap()).into(),
                             ))
                         },
                     )?;
@@ -122,10 +114,7 @@ pub struct SpecialChunkTableConfig<F> {
 }
 
 impl<F: FieldExt> SpecialChunkTableConfig<F> {
-    pub(crate) fn load(
-        &self,
-        layouter: &mut impl Layouter<F>,
-    ) -> Result<(), Error> {
+    pub(crate) fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         layouter.assign_table(
             || "Special Chunks",
             |mut table| {
@@ -137,14 +126,8 @@ impl<F: FieldExt> SpecialChunkTableConfig<F> {
                         let (low, high) = (i, j);
                         let last_chunk = F::from(low.into())
                             + F::from(high.into())
-                                * F::from(B13.into()).pow(&[
-                                    LANE_SIZE as u64,
-                                    0,
-                                    0,
-                                    0,
-                                ]);
-                        let output_coef =
-                            F::from(convert_b13_coef(low + high).into());
+                                * F::from(B13.into()).pow(&[LANE_SIZE as u64, 0, 0, 0]);
+                        let output_coef = F::from(convert_b13_coef(low + high).into());
                         table.assign_cell(
                             || "last chunk",
                             self.last_chunk,
@@ -180,10 +163,8 @@ impl<F: FieldExt> SpecialChunkTableConfig<F> {
         // Lookup for special chunk conversion
         meta.lookup(|meta| {
             let q_enable = meta.query_selector(q_enable);
-            let last_chunk_advice =
-                meta.query_advice(last_chunk_advice, Rotation::cur());
-            let output_coef_advice =
-                meta.query_advice(output_coef_advice, Rotation::cur());
+            let last_chunk_advice = meta.query_advice(last_chunk_advice, Rotation::cur());
+            let output_coef_advice = meta.query_advice(output_coef_advice, Rotation::cur());
 
             vec![
                 (q_enable.clone() * last_chunk_advice, config.last_chunk),
@@ -225,10 +206,7 @@ impl<F: FieldExt> BaseInfo<F> {
             .len()
     }
 
-    pub fn compute_coefs(
-        &self,
-        input: F,
-    ) -> Result<(Vec<F>, Vec<F>, F), Error> {
+    pub fn compute_coefs(&self, input: F) -> Result<(Vec<F>, Vec<F>, F), Error> {
         // big-endian
         let input_chunks: Vec<u8> = {
             let raw = f_to_biguint(input);
@@ -277,10 +255,7 @@ pub struct FromBinaryTableConfig<F> {
 }
 
 impl<F: FieldExt> FromBinaryTableConfig<F> {
-    pub(crate) fn load(
-        &self,
-        layouter: &mut impl Layouter<F>,
-    ) -> Result<(), Error> {
+    pub(crate) fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         layouter.assign_table(
             || "2 -> (9 and 13)",
             |mut table| {
@@ -346,10 +321,7 @@ pub struct FromBase9TableConfig<F> {
 }
 
 impl<F: FieldExt> FromBase9TableConfig<F> {
-    pub(crate) fn load(
-        &self,
-        layouter: &mut impl Layouter<F>,
-    ) -> Result<(), Error> {
+    pub(crate) fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         layouter.assign_table(
             || "9 -> (2 and 13)",
             |mut table| {
@@ -365,10 +337,8 @@ impl<F: FieldExt> FromBase9TableConfig<F> {
                         i,
                         || Ok(f_from_radix_be::<F>(&b9_chunks, B9)),
                     )?;
-                    let converted_chunks: Vec<u8> = b9_chunks
-                        .iter()
-                        .map(|&x| convert_b9_coef(x))
-                        .collect_vec();
+                    let converted_chunks: Vec<u8> =
+                        b9_chunks.iter().map(|&x| convert_b9_coef(x)).collect_vec();
                     table.assign_cell(
                         || "base 13",
                         self.base13,

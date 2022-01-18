@@ -31,10 +31,7 @@ impl<F: FieldExt> ExecutionGadget<F> for JumpGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::JUMP;
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
-        let destination = RandomLinearCombination::new(
-            cb.query_bytes(),
-            cb.power_of_randomness(),
-        );
+        let destination = RandomLinearCombination::new(cb.query_bytes(), cb.power_of_randomness());
 
         // Pop the value from the stack
         cb.stack_pop(destination.expr());
@@ -54,12 +51,7 @@ impl<F: FieldExt> ExecutionGadget<F> for JumpGadget<F> {
             stack_pointer: Delta(1.expr()),
             ..Default::default()
         };
-        let same_context = SameContextGadget::construct(
-            cb,
-            opcode,
-            step_state_transition,
-            None,
-        );
+        let same_context = SameContextGadget::construct(cb, opcode, step_state_transition, None);
 
         Self {
             same_context,

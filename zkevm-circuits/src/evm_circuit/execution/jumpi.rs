@@ -35,10 +35,7 @@ impl<F: FieldExt> ExecutionGadget<F> for JumpiGadget<F> {
     const EXECUTION_STATE: ExecutionState = ExecutionState::JUMPI;
 
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
-        let destination = RandomLinearCombination::new(
-            cb.query_bytes(),
-            cb.power_of_randomness(),
-        );
+        let destination = RandomLinearCombination::new(cb.query_bytes(), cb.power_of_randomness());
         let condition = cb.query_cell();
 
         // Pop the value from the stack
@@ -74,12 +71,7 @@ impl<F: FieldExt> ExecutionGadget<F> for JumpiGadget<F> {
             stack_pointer: Delta(2.expr()),
             ..Default::default()
         };
-        let same_context = SameContextGadget::construct(
-            cb,
-            opcode,
-            step_state_transition,
-            None,
-        );
+        let same_context = SameContextGadget::construct(cb, opcode, step_state_transition, None);
 
         Self {
             same_context,
@@ -100,12 +92,9 @@ impl<F: FieldExt> ExecutionGadget<F> for JumpiGadget<F> {
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
 
-        let [destination, condition] = [step.rw_indices[0], step.rw_indices[1]]
-            .map(|idx| block.rws[idx].stack_value());
-        let condition = Word::random_linear_combine(
-            condition.to_le_bytes(),
-            block.randomness,
-        );
+        let [destination, condition] =
+            [step.rw_indices[0], step.rw_indices[1]].map(|idx| block.rws[idx].stack_value());
+        let condition = Word::random_linear_combine(condition.to_le_bytes(), block.randomness);
 
         self.destination.assign(
             region,
@@ -126,9 +115,7 @@ impl<F: FieldExt> ExecutionGadget<F> for JumpiGadget<F> {
 #[cfg(test)]
 mod test {
     use crate::evm_circuit::{
-        test::{
-            rand_range, rand_word, run_test_circuit_incomplete_fixed_table,
-        },
+        test::{rand_range, rand_word, run_test_circuit_incomplete_fixed_table},
         witness,
     };
     use bus_mapping::{bytecode, eth_types::Word};

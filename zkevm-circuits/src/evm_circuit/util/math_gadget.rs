@@ -2,8 +2,8 @@ use crate::{
     evm_circuit::{
         param::MAX_BYTES_FIELD,
         util::{
-            self, constraint_builder::ConstraintBuilder, from_bytes,
-            pow_of_two, pow_of_two_expr, select, split_u256, sum, Cell,
+            self, constraint_builder::ConstraintBuilder, from_bytes, pow_of_two, pow_of_two_expr,
+            select, split_u256, sum, Cell,
         },
     },
     util::Expr,
@@ -20,19 +20,13 @@ pub struct IsZeroGadget<F> {
 }
 
 impl<F: FieldExt> IsZeroGadget<F> {
-    pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
-        value: Expression<F>,
-    ) -> Self {
+    pub(crate) fn construct(cb: &mut ConstraintBuilder<F>, value: Expression<F>) -> Self {
         let inverse = cb.query_cell();
 
         let is_zero = 1.expr() - (value.clone() * inverse.expr());
         // when `value != 0` check `inverse = a.invert()`: value * (1 - value *
         // inverse)
-        cb.add_constraint(
-            "value ⋅ (1 - value ⋅ value_inv)",
-            value * is_zero.clone(),
-        );
+        cb.add_constraint("value ⋅ (1 - value ⋅ value_inv)", value * is_zero.clone());
         // when `value == 0` check `inverse = 0`: `inverse ⋅ (1 - value *
         // inverse)`
         cb.add_constraint(
@@ -106,10 +100,7 @@ pub(crate) struct AddWordsGadget<F, const N: usize> {
 }
 
 impl<F: FieldExt, const N: usize> AddWordsGadget<F, N> {
-    pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
-        addends: [util::Word<F>; N],
-    ) -> Self {
+    pub(crate) fn construct(cb: &mut ConstraintBuilder<F>, addends: [util::Word<F>; N]) -> Self {
         let sum = cb.query_word();
         let carry_lo = cb.query_cell();
         let carry_hi = cb.query_cell();
@@ -164,8 +155,7 @@ impl<F: FieldExt, const N: usize> AddWordsGadget<F, N> {
         }
         self.sum.assign(region, offset, Some(sum.to_le_bytes()))?;
 
-        let (addends_lo, addends_hi): (Vec<_>, Vec<_>) =
-            addends.iter().map(split_u256).unzip();
+        let (addends_lo, addends_hi): (Vec<_>, Vec<_>) = addends.iter().map(split_u256).unzip();
         let (sum_lo, sum_hi) = split_u256(&sum);
 
         let sum_of_addends_lo = addends_lo
@@ -177,16 +167,10 @@ impl<F: FieldExt, const N: usize> AddWordsGadget<F, N> {
 
         let carry_lo = (sum_of_addends_lo - sum_lo) >> 128;
         let carry_hi = (sum_of_addends_hi + carry_lo - sum_hi) >> 128;
-        self.carry_lo.assign(
-            region,
-            offset,
-            Some(F::from(carry_lo.low_u64())),
-        )?;
-        self.carry_hi.assign(
-            region,
-            offset,
-            Some(F::from(carry_hi.low_u64())),
-        )?;
+        self.carry_lo
+            .assign(region, offset, Some(F::from(carry_lo.low_u64())))?;
+        self.carry_hi
+            .assign(region, offset, Some(F::from(carry_hi.low_u64())))?;
 
         Ok(())
     }
@@ -246,13 +230,11 @@ impl<F: FieldExt> MulWordsGadget<F> {
             let now_idx = (virtual_idx * 8) as usize;
             a_limbs.push(from_bytes::expr(&a.cells[now_idx..now_idx + 8]));
             b_limbs.push(from_bytes::expr(&b.cells[now_idx..now_idx + 8]));
-            c_limbs
-                .push(from_bytes::expr(&product.cells[now_idx..now_idx + 8]));
+            c_limbs.push(from_bytes::expr(&product.cells[now_idx..now_idx + 8]));
         }
 
         let t0 = a_limbs[0].clone() * b_limbs[0].clone();
-        let t1 = a_limbs[0].clone() * b_limbs[1].clone()
-            + a_limbs[1].clone() * b_limbs[0].clone();
+        let t1 = a_limbs[0].clone() * b_limbs[1].clone() + a_limbs[1].clone() * b_limbs[0].clone();
         let t2 = a_limbs[0].clone() * b_limbs[2].clone()
             + a_limbs[1].clone() * b_limbs[1].clone()
             + a_limbs[2].clone() * b_limbs[0].clone();
@@ -272,8 +254,7 @@ impl<F: FieldExt> MulWordsGadget<F> {
             "mul(multipliers_lo) == product_lo + radix_lo ⋅ 2^128",
             cur_v0.clone() * radix_constant_128.clone(),
             t0.expr() + t1.expr() * radix_constant_64.clone()
-                - (c_limbs[0].clone()
-                    + c_limbs[1].clone() * radix_constant_64.clone()),
+                - (c_limbs[0].clone() + c_limbs[1].clone() * radix_constant_64.clone()),
         );
         cb.require_equal(
             "mul(multipliers_high) == product_high + radix_high ⋅ 2^128",
@@ -334,8 +315,7 @@ impl<F: FieldExt> MulWordsGadget<F> {
         for total_idx in 0..4 {
             let mut rhs_sum = BigUint::from(0u128);
             for a_id in 0..=total_idx {
-                let (a_idx, b_idx) =
-                    (a_id as usize, (total_idx - a_id) as usize);
+                let (a_idx, b_idx) = (a_id as usize, (total_idx - a_id) as usize);
                 let tmp_a = if a_limbs.len() > a_idx {
                     BigUint::from(a_limbs[a_idx])
                 } else {
@@ -413,10 +393,8 @@ impl<F: FieldExt> MulWordByU64Gadget<F> {
             carry_hi: cb.query_bytes(),
         };
 
-        let multiplicand_lo =
-            from_bytes::expr(&gadget.multiplicand.cells[..16]);
-        let multiplicand_hi =
-            from_bytes::expr(&gadget.multiplicand.cells[16..]);
+        let multiplicand_lo = from_bytes::expr(&gadget.multiplicand.cells[..16]);
+        let multiplicand_hi = from_bytes::expr(&gadget.multiplicand.cells[16..]);
 
         let product_lo = from_bytes::expr(&gadget.product.cells[..16]);
         let product_hi = from_bytes::expr(&gadget.product.cells[16..]);
@@ -451,11 +429,8 @@ impl<F: FieldExt> MulWordByU64Gadget<F> {
         multiplier: u64,
         product: Word,
     ) -> Result<(), Error> {
-        self.multiplicand.assign(
-            region,
-            offset,
-            Some(multiplicand.to_le_bytes()),
-        )?;
+        self.multiplicand
+            .assign(region, offset, Some(multiplicand.to_le_bytes()))?;
         self.product
             .assign(region, offset, Some(product.to_le_bytes()))?;
         self.multiplier
@@ -464,19 +439,15 @@ impl<F: FieldExt> MulWordByU64Gadget<F> {
         let (multiplicand_lo, multiplicand_hi) = split_u256(&multiplicand);
         let (product_lo, product_hi) = split_u256(&product);
 
-        let mut assign_quotient =
-            |cells: &[Cell<F>], value: Word| -> Result<(), Error> {
-                for (cell, byte) in
-                    cells.iter().zip(value.low_u64().to_le_bytes().iter())
-                {
-                    cell.assign(region, offset, Some(F::from(*byte as u64)))?;
-                }
-                Ok(())
-            };
+        let mut assign_quotient = |cells: &[Cell<F>], value: Word| -> Result<(), Error> {
+            for (cell, byte) in cells.iter().zip(value.low_u64().to_le_bytes().iter()) {
+                cell.assign(region, offset, Some(F::from(*byte as u64)))?;
+            }
+            Ok(())
+        };
 
         let carry_lo = (multiplicand_lo * multiplier - product_lo) >> 128;
-        let carry_hi =
-            (multiplicand_hi * multiplier - product_hi + carry_lo) >> 128;
+        let carry_hi = (multiplicand_hi * multiplier - product_hi + carry_lo) >> 128;
         assign_quotient(&self.carry_lo, carry_lo)?;
         assign_quotient(&self.carry_hi, carry_hi)?;
 
@@ -500,10 +471,7 @@ pub struct RangeCheckGadget<F, const NUM_BYTES: usize> {
 }
 
 impl<F: FieldExt, const NUM_BYTES: usize> RangeCheckGadget<F, NUM_BYTES> {
-    pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
-        value: Expression<F>,
-    ) -> Self {
+    pub(crate) fn construct(cb: &mut ConstraintBuilder<F>, value: Expression<F>) -> Self {
         assert!(NUM_BYTES <= 31, "number of bytes too large");
 
         let parts = cb.query_bytes();
@@ -584,11 +552,8 @@ impl<F: FieldExt, const NUM_BYTES: usize> LtGadget<F, NUM_BYTES> {
     ) -> Result<(F, Vec<u8>), Error> {
         // Set `lt`
         let lt = lhs < rhs;
-        self.lt.assign(
-            region,
-            offset,
-            Some(F::from(if lt { 1 } else { 0 })),
-        )?;
+        self.lt
+            .assign(region, offset, Some(F::from(if lt { 1 } else { 0 })))?;
 
         // Set the bytes of diff
         let diff = (lhs - rhs) + (if lt { self.range } else { F::zero() });
@@ -673,15 +638,9 @@ impl<F: FieldExt> PairSelectGadget<F> {
         let is_b = 1.expr() - is_a.expr();
 
         // Force `is_a` to be `0` when `value != a`
-        cb.add_constraint(
-            "is_a ⋅ (value - a)",
-            is_a.expr() * (value.clone() - a),
-        );
+        cb.add_constraint("is_a ⋅ (value - a)", is_a.expr() * (value.clone() - a));
         // Force `1 - is_a` to be `0` when `value != b`
-        cb.add_constraint(
-            "(1 - is_a) ⋅ (value - b)",
-            is_b.clone() * (value - b),
-        );
+        cb.add_constraint("(1 - is_a) ⋅ (value - b)", is_b.clone() * (value - b));
 
         Self { is_a, is_b }
     }
@@ -733,8 +692,7 @@ impl<F: FieldExt, const NUM_BYTES: usize> ConstantDivisionGadget<F, NUM_BYTES> {
 
         // Require that quotient < 2**NUM_BYTES
         // so we can't have any overflow when doing `quotient * divisor`.
-        let quotient_range_check =
-            RangeCheckGadget::construct(cb, quotient.expr());
+        let quotient_range_check = RangeCheckGadget::construct(cb, quotient.expr());
 
         // Check if the division was done correctly
         cb.require_equal(
@@ -770,11 +728,8 @@ impl<F: FieldExt, const NUM_BYTES: usize> ConstantDivisionGadget<F, NUM_BYTES> {
         self.remainder
             .assign(region, offset, Some(F::from_u128(remainder)))?;
 
-        self.quotient_range_check.assign(
-            region,
-            offset,
-            F::from_u128(quotient),
-        )?;
+        self.quotient_range_check
+            .assign(region, offset, F::from_u128(quotient))?;
 
         Ok((quotient, remainder))
     }

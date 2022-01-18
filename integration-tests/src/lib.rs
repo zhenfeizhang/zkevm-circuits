@@ -44,8 +44,7 @@ lazy_static! {
 
 /// Initialize log
 pub fn log_init() {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
-        .init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 }
 
 /// Get the integration test [`GethClient`]
@@ -68,7 +67,8 @@ pub async fn get_chain_constants() -> ChainConstants {
     }
 }
 
-const PHRASE: &str = "work man father plunge mystery proud hollow address reunion sauce theory bonus";
+const PHRASE: &str =
+    "work man father plunge mystery proud hollow address reunion sauce theory bonus";
 
 /// Get a wallet by index
 pub fn get_wallet(index: u32) -> Wallet<SigningKey> {
@@ -98,10 +98,8 @@ pub struct GenDataOutput {
 impl GenDataOutput {
     /// Load [`GenDataOutput`] from the json file.
     pub fn load() -> Self {
-        serde_json::from_reader(
-            File::open(GENDATA_OUTPUT_PATH).expect("cannot read file"),
-        )
-        .expect("cannot deserialize json from file")
+        serde_json::from_reader(File::open(GENDATA_OUTPUT_PATH).expect("cannot read file"))
+            .expect("cannot deserialize json from file")
     }
 
     /// Store [`GenDataOutput`] into the json file.

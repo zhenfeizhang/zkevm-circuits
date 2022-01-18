@@ -7,10 +7,7 @@ use bus_mapping::eth_types::ToScalar;
 use bus_mapping::operation::{MemoryOp, Operation, StackOp, StorageOp};
 use halo2::{
     circuit::{Layouter, Region, SimpleFloorPlanner},
-    plonk::{
-        Advice, Circuit, Column, ConstraintSystem, Error, Expression, Fixed,
-        VirtualCells,
-    },
+    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
     poly::Rotation,
 };
 use pairing::arithmetic::FieldExt;
@@ -277,21 +274,19 @@ impl<
 
         // Only one monotone gadget is used for memory and stack (with
         // MEMORY_ADDRESS_MAX as it is bigger)
-        let address_monotone =
-            MonotoneChip::<F, MEMORY_ADDRESS_MAX, true, false>::configure(
-                meta,
-                |meta| {
-                    let padding = meta.query_advice(padding, Rotation::cur());
-                    let is_not_padding = one.clone() - padding;
-                    // Since q_memory_not_first and q_stack_non_first are
-                    // mutually exclusive, q_not_first is binary.
-                    let q_not_first = q_memory_not_first_norm(meta)
-                        + q_stack_not_first_norm(meta);
+        let address_monotone = MonotoneChip::<F, MEMORY_ADDRESS_MAX, true, false>::configure(
+            meta,
+            |meta| {
+                let padding = meta.query_advice(padding, Rotation::cur());
+                let is_not_padding = one.clone() - padding;
+                // Since q_memory_not_first and q_stack_non_first are
+                // mutually exclusive, q_not_first is binary.
+                let q_not_first = q_memory_not_first_norm(meta) + q_stack_not_first_norm(meta);
 
-                    q_not_first * is_not_padding
-                },
-                address,
-            );
+                q_not_first * is_not_padding
+            },
+            address,
+        );
 
         // Padding monotonicity could be checked using gates (as padding only
         // takes values 0 and 1), but it's much slower than using a
@@ -306,8 +301,7 @@ impl<
         meta.create_gate("First memory row operation", |meta| {
             let value = meta.query_advice(value, Rotation::cur());
             let flag = meta.query_advice(flag, Rotation::cur());
-            let global_counter =
-                meta.query_advice(global_counter, Rotation::cur());
+            let global_counter = meta.query_advice(global_counter, Rotation::cur());
             let q_memory_first = q_memory_first(meta);
 
             //
@@ -386,11 +380,14 @@ impl<
             // If flag == 0 (read), and global_counter != 0, value_prev == value_cur
             let value_prev = meta.query_advice(value, Rotation::prev());
             let q_read = one.clone() - flag;
-            // when addresses changes, we don't require the operation is write as this is enforced by evm circuit
+            // when addresses changes, we don't require the operation is write as this is
+            // enforced by evm circuit
 
             vec![
                 q_stack_not_first.clone() * bool_check_flag, // flag is either 0 or 1
-                q_stack_not_first * q_read * (value_cur - value_prev), // when reading, the value is the same as at the previous op
+                q_stack_not_first * q_read * (value_cur - value_prev), /* when reading, the
+                                                                        * value is the same as
+                                                                        * at the previous op */
             ]
         });
 
@@ -420,8 +417,7 @@ impl<
 
         // Memory address is in the allowed range.
         meta.lookup_any(|meta| {
-            let q_memory =
-                q_memory_first_norm(meta) + q_memory_not_first_norm(meta);
+            let q_memory = q_memory_first_norm(meta) + q_memory_not_first_norm(meta);
             let address_cur = meta.query_advice(address, Rotation::cur());
             let memory_address_table_zero =
                 meta.query_fixed(memory_address_table_zero, Rotation::cur());
@@ -431,8 +427,7 @@ impl<
 
         // Stack address is in the allowed range.
         meta.lookup_any(|meta| {
-            let q_stack =
-                q_stack_first_norm(meta) + q_stack_not_first_norm(meta);
+            let q_stack = q_stack_first_norm(meta) + q_stack_not_first_norm(meta);
             let address_cur = meta.query_advice(address, Rotation::cur());
             let stack_address_table_zero =
                 meta.query_fixed(stack_address_table_zero, Rotation::cur());
@@ -442,10 +437,8 @@ impl<
 
         // global_counter is in the allowed range:
         meta.lookup_any(|meta| {
-            let global_counter =
-                meta.query_advice(global_counter, Rotation::cur());
-            let global_counter_table =
-                meta.query_fixed(global_counter_table, Rotation::cur());
+            let global_counter = meta.query_advice(global_counter, Rotation::cur());
+            let global_counter_table = meta.query_fixed(global_counter_table, Rotation::cur());
 
             vec![(global_counter, global_counter_table)]
         });
@@ -456,8 +449,7 @@ impl<
         meta.lookup_any(|meta| {
             let q_memory_not_first = q_memory_not_first_norm(meta);
             let value = meta.query_advice(value, Rotation::cur());
-            let memory_value_table =
-                meta.query_fixed(memory_value_table, Rotation::cur());
+            let memory_value_table = meta.query_fixed(memory_value_table, Rotation::cur());
 
             vec![(q_memory_not_first * value, memory_value_table)]
         });
@@ -474,10 +466,8 @@ impl<
                 q_not_first * is_not_padding
             },
             |meta| {
-                let storage_key_cur =
-                    meta.query_advice(storage_key, Rotation::cur());
-                let storage_key_prev =
-                    meta.query_advice(storage_key, Rotation::prev());
+                let storage_key_cur = meta.query_advice(storage_key, Rotation::cur());
+                let storage_key_prev = meta.query_advice(storage_key, Rotation::prev());
                 storage_key_cur - storage_key_prev
             },
             storage_key_diff_inv,
@@ -612,10 +602,7 @@ impl<
     }
 
     /// Load lookup table / other fixed constants for this configuration.
-    pub(crate) fn load(
-        &self,
-        layouter: &mut impl Layouter<F>,
-    ) -> Result<(), Error> {
+    pub(crate) fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         layouter
             .assign_region(
                 || "global counter table",
@@ -723,11 +710,7 @@ impl<
             // memory ops have init row
             if index == 0 || address != address_prev {
                 self.init(region, offset, address, target)?;
-                address_diff_is_zero_chip.assign(
-                    region,
-                    offset,
-                    Some(address - address_prev),
-                )?;
+                address_diff_is_zero_chip.assign(region, offset, Some(address - address_prev))?;
                 target = 2;
                 offset += 1;
             }
@@ -791,11 +774,7 @@ impl<
             )?;
             bus_mappings.push(bus_mapping);
 
-            address_diff_is_zero_chip.assign(
-                region,
-                offset,
-                Some(address - address_prev),
-            )?;
+            address_diff_is_zero_chip.assign(region, offset, Some(address - address_prev))?;
 
             address_prev = address;
             offset += 1;
@@ -847,11 +826,7 @@ impl<
             )?;
             bus_mappings.push(bus_mapping);
 
-            address_diff_is_zero_chip.assign(
-                region,
-                offset,
-                Some(address - address_prev),
-            )?;
+            address_diff_is_zero_chip.assign(region, offset, Some(address - address_prev))?;
 
             storage_key_diff_is_zero_chip.assign(
                 region,
@@ -889,12 +864,7 @@ impl<
 
         for i in offset..start_offset + max_rows {
             if i == start_offset {
-                region.assign_fixed(
-                    || "target",
-                    self.q_target,
-                    i,
-                    || Ok(F::one()),
-                )?;
+                region.assign_fixed(|| "target", self.q_target, i, || Ok(F::one()))?;
             } else {
                 region.assign_fixed(
                     || "target",
@@ -903,12 +873,7 @@ impl<
                     || Ok(F::from(target as u64)),
                 )?;
             }
-            region.assign_advice(
-                || "padding",
-                self.padding,
-                i,
-                || Ok(F::one()),
-            )?;
+            region.assign_advice(|| "padding", self.padding, i, || Ok(F::one()))?;
             region.assign_advice(|| "memory", self.flag, i, || Ok(F::one()))?;
         }
 
@@ -925,8 +890,7 @@ impl<
     ) -> Result<Vec<BusMapping<F>>, Error> {
         let mut bus_mappings: Vec<BusMapping<F>> = Vec::new();
 
-        let address_diff_is_zero_chip =
-            IsZeroChip::construct(self.address_diff_is_zero.clone());
+        let address_diff_is_zero_chip = IsZeroChip::construct(self.address_diff_is_zero.clone());
 
         let memory_address_monotone_chip =
             MonotoneChip::<F, MEMORY_ADDRESS_MAX, true, false>::construct(
@@ -935,9 +899,7 @@ impl<
         memory_address_monotone_chip.load(&mut layouter)?;
 
         let padding_monotone_chip =
-            MonotoneChip::<F, 1, true, false>::construct(
-                self.padding_monotone.clone(),
-            );
+            MonotoneChip::<F, 1, true, false>::construct(self.padding_monotone.clone());
         padding_monotone_chip.load(&mut layouter)?;
 
         let storage_key_diff_is_zero_chip =
@@ -981,12 +943,7 @@ impl<
         address: F,
         target: usize,
     ) -> Result<(), Error> {
-        region.assign_advice(
-            || "init address",
-            self.address,
-            offset,
-            || Ok(address),
-        )?;
+        region.assign_advice(|| "init address", self.address, offset, || Ok(address))?;
 
         region.assign_advice(
             || "init global counter",
@@ -995,19 +952,9 @@ impl<
             || Ok(F::zero()),
         )?;
 
-        region.assign_advice(
-            || "init value",
-            self.value,
-            offset,
-            || Ok(F::zero()),
-        )?;
+        region.assign_advice(|| "init value", self.value, offset, || Ok(F::zero()))?;
 
-        region.assign_advice(
-            || "init memory",
-            self.flag,
-            offset,
-            || Ok(F::one()),
-        )?;
+        region.assign_advice(|| "init memory", self.flag, offset, || Ok(F::one()))?;
 
         region.assign_fixed(
             || "target",
@@ -1033,12 +980,7 @@ impl<
         value_prev: F,
     ) -> Result<BusMapping<F>, Error> {
         let address = {
-            let cell = region.assign_advice(
-                || "address",
-                self.address,
-                offset,
-                || Ok(address),
-            )?;
+            let cell = region.assign_advice(|| "address", self.address, offset, || Ok(address))?;
             Variable::<F, F> {
                 cell,
                 field_elem: Some(address),
@@ -1064,12 +1006,7 @@ impl<
         };
 
         let value = {
-            let cell = region.assign_advice(
-                || "value",
-                self.value,
-                offset,
-                || Ok(value),
-            )?;
+            let cell = region.assign_advice(|| "value", self.value, offset, || Ok(value))?;
 
             Variable::<F, F> {
                 cell,
@@ -1110,12 +1047,7 @@ impl<
 
         let flag = {
             let field_elem = F::from(flag as u64);
-            let cell = region.assign_advice(
-                || "flag",
-                self.flag,
-                offset,
-                || Ok(field_elem),
-            )?;
+            let cell = region.assign_advice(|| "flag", self.flag, offset, || Ok(field_elem))?;
 
             Variable::<bool, F> {
                 cell,
@@ -1264,10 +1196,7 @@ mod tests {
     use bus_mapping::mock;
 
     use bus_mapping::operation::{MemoryOp, Operation, StackOp, StorageOp, RW};
-    use halo2::dev::{
-        MockProver, VerifyFailure::ConstraintNotSatisfied,
-        VerifyFailure::Lookup,
-    };
+    use halo2::dev::{MockProver, VerifyFailure::ConstraintNotSatisfied, VerifyFailure::Lookup};
 
     use pairing::bn256::Fr as Fp;
 
@@ -1324,10 +1253,7 @@ mod tests {
         }
     }
 
-    fn lookup_fail(
-        row: usize,
-        lookup_index: usize,
-    ) -> halo2::dev::VerifyFailure {
+    fn lookup_fail(row: usize, lookup_index: usize) -> halo2::dev::VerifyFailure {
         Lookup { lookup_index, row }
     }
 
@@ -1564,30 +1490,15 @@ mod tests {
     fn max_values() {
         let memory_op_0 = Operation::new(
             RWCounter::from(12),
-            MemoryOp::new(
-                RW::WRITE,
-                1,
-                MemoryAddress::from(MEMORY_ADDRESS_MAX),
-                32,
-            ),
+            MemoryOp::new(RW::WRITE, 1, MemoryAddress::from(MEMORY_ADDRESS_MAX), 32),
         );
         let memory_op_1 = Operation::new(
             RWCounter::from(GLOBAL_COUNTER_MAX),
-            MemoryOp::new(
-                RW::READ,
-                1,
-                MemoryAddress::from(MEMORY_ADDRESS_MAX),
-                32,
-            ),
+            MemoryOp::new(RW::READ, 1, MemoryAddress::from(MEMORY_ADDRESS_MAX), 32),
         );
         let memory_op_2 = Operation::new(
             RWCounter::from(GLOBAL_COUNTER_MAX + 1),
-            MemoryOp::new(
-                RW::WRITE,
-                1,
-                MemoryAddress::from(MEMORY_ADDRESS_MAX),
-                32,
-            ),
+            MemoryOp::new(RW::WRITE, 1, MemoryAddress::from(MEMORY_ADDRESS_MAX), 32),
         );
 
         let memory_op_3 = Operation::new(
@@ -1601,12 +1512,7 @@ mod tests {
         );
         let memory_op_4 = Operation::new(
             RWCounter::from(24),
-            MemoryOp::new(
-                RW::READ,
-                1,
-                MemoryAddress::from(MEMORY_ADDRESS_MAX + 1),
-                32,
-            ),
+            MemoryOp::new(RW::READ, 1, MemoryAddress::from(MEMORY_ADDRESS_MAX + 1), 32),
         );
 
         let stack_op_0 = Operation::new(
@@ -1976,9 +1882,7 @@ mod tests {
             MLOAD
             STOP
         };
-        let block =
-            mock::BlockData::new_single_tx_trace_code_at_start(&bytecode)
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_at_start(&bytecode).unwrap();
         let mut builder = block.new_circuit_input_builder();
         builder.handle_tx(&block.eth_tx, &block.geth_trace).unwrap();
 

@@ -1,8 +1,6 @@
 use crate::gates::{
     gate_helpers::BlockCount2,
-    rho_checks::{
-        BlockCountFinalConfig, LaneRotateConversionConfig, RhoAdvices,
-    },
+    rho_checks::{BlockCountFinalConfig, LaneRotateConversionConfig, RhoAdvices},
 };
 
 use halo2::{
@@ -48,8 +46,7 @@ impl<F: FieldExt> RhoConfig<F> {
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
-        let final_block_count_config =
-            BlockCountFinalConfig::configure(meta, axiliary);
+        let final_block_count_config = BlockCountFinalConfig::configure(meta, axiliary);
         Self {
             state,
             state_rotate_convert_configs,
@@ -66,11 +63,10 @@ impl<F: FieldExt> RhoConfig<F> {
             .iter()
             .enumerate()
             .map(|(idx, &lane)| -> Result<R<F>, Error> {
-                let (lane_next_row, bc) =
-                    self.state_rotate_convert_configs[idx].assign_region(
-                        &mut layouter.namespace(|| format!("arc lane {}", idx)),
-                        lane,
-                    )?;
+                let (lane_next_row, bc) = self.state_rotate_convert_configs[idx].assign_region(
+                    &mut layouter.namespace(|| format!("arc lane {}", idx)),
+                    lane,
+                )?;
                 Ok((lane_next_row, bc))
             })
             .into_iter()
@@ -156,16 +152,8 @@ mod tests {
                     meta.lookup_table_column(),
                     meta.lookup_table_column(),
                 ];
-                let special =
-                    [meta.lookup_table_column(), meta.lookup_table_column()];
-                RhoConfig::configure(
-                    meta,
-                    state,
-                    &adv,
-                    axiliary,
-                    base13_to_9,
-                    special,
-                )
+                let special = [meta.lookup_table_column(), meta.lookup_table_column()];
+                RhoConfig::configure(meta, state, &adv, axiliary, base13_to_9, special)
             }
 
             fn synthesize(
@@ -199,18 +187,13 @@ mod tests {
                         Ok(state)
                     },
                 )?;
-                let next_state =
-                    config.assign_rotation_checks(&mut layouter, state)?;
+                let next_state = config.assign_rotation_checks(&mut layouter, state)?;
                 assert_eq!(next_state.map(|lane| lane.1), self.out_state);
                 layouter.assign_region(
                     || "assign output state",
                     |mut region| {
                         let offset = 1;
-                        config.assign_region(
-                            &mut region,
-                            offset,
-                            next_state,
-                        )?;
+                        config.assign_region(&mut region, offset, next_state)?;
                         Ok(())
                     },
                 )?;
@@ -249,8 +232,7 @@ mod tests {
             use plotters::prelude::*;
             let k = 15;
             let root =
-                BitMapBackend::new("rho-test-circuit.png", (16384, 65536))
-                    .into_drawing_area();
+                BitMapBackend::new("rho-test-circuit.png", (16384, 65536)).into_drawing_area();
             root.fill(&WHITE).unwrap();
             let root = root.titled("Rho", ("sans-serif", 60)).unwrap();
             halo2::dev::CircuitLayout::default()

@@ -21,8 +21,7 @@ pub(crate) struct ErrorOOGPureMemoryGadget<F> {
     opcode: Cell<F>,
     address: Word<F>,
     address_in_range: IsZeroGadget<F>,
-    memory_expansion:
-        MemoryExpansionGadget<F, { MAX_MEMORY_SIZE_IN_BYTES * 2 - 1 }>,
+    memory_expansion: MemoryExpansionGadget<F, { MAX_MEMORY_SIZE_IN_BYTES * 2 - 1 }>,
     insufficient_gas: LtGadget<F, { MAX_MEMORY_SIZE_IN_BYTES * 2 - 1 }>,
     is_mstore8: IsEqualGadget<F>,
 }
@@ -30,8 +29,7 @@ pub(crate) struct ErrorOOGPureMemoryGadget<F> {
 impl<F: FieldExt> ExecutionGadget<F> for ErrorOOGPureMemoryGadget<F> {
     const NAME: &'static str = "ErrorOutOfGasPureMemory";
 
-    const EXECUTION_STATE: ExecutionState =
-        ExecutionState::ErrorOutOfGasPureMemory;
+    const EXECUTION_STATE: ExecutionState = ExecutionState::ErrorOutOfGasPureMemory;
 
     // Support other OOG due to pure memory including CREATE, RETURN and REVERT
     fn configure(cb: &mut ConstraintBuilder<F>) -> Self {
@@ -41,32 +39,24 @@ impl<F: FieldExt> ExecutionGadget<F> for ErrorOOGPureMemoryGadget<F> {
         let address = cb.query_word();
 
         // Check if this is an MSTORE8
-        let is_mstore8 = IsEqualGadget::construct(
-            cb,
-            opcode.expr(),
-            OpcodeId::MSTORE8.expr(),
-        );
+        let is_mstore8 = IsEqualGadget::construct(cb, opcode.expr(), OpcodeId::MSTORE8.expr());
         let is_not_mstore8 = 1.expr() - is_mstore8.expr();
 
         // Get the next memory size and the gas cost for this memory access
         let memory_expansion = MemoryExpansionGadget::construct(
             cb,
             cb.curr.state.memory_word_size.expr(),
-            address_low::expr(&address)
-                + 1.expr()
-                + (is_not_mstore8 * 31.expr()),
+            address_low::expr(&address) + 1.expr() + (is_not_mstore8 * 31.expr()),
         );
 
         // Check if the memory address is too large
-        let address_in_range =
-            IsZeroGadget::construct(cb, address_high::expr(&address));
+        let address_in_range = IsZeroGadget::construct(cb, address_high::expr(&address));
         // Check if the amount of gas available is less than the amount of gas
         // required
         let insufficient_gas = LtGadget::construct(
             cb,
             cb.curr.state.gas_left.expr(),
-            OpcodeId::MLOAD.constant_gas_cost().expr()
-                + memory_expansion.gas_cost(),
+            OpcodeId::MLOAD.constant_gas_cost().expr() + memory_expansion.gas_cost(),
         );
 
         // Make sure we are out of gas

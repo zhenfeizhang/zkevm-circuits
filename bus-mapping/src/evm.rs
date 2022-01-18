@@ -15,9 +15,7 @@ pub use {
 };
 
 /// Wrapper type over `usize` which represents the program counter of the Evm.
-#[derive(
-    Clone, Copy, Eq, PartialEq, Serialize, Deserialize, PartialOrd, Ord,
-)]
+#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct ProgramCounter(pub(crate) usize);
 
 impl fmt::Debug for ProgramCounter {
@@ -105,9 +103,7 @@ impl RWCounter {
 
 /// Defines the gas left to perate in a
 /// [`ExecStep`](crate::circuit_input_builder::ExecStep).
-#[derive(
-    Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize,
-)]
+#[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Gas(pub u64);
 
 impl fmt::Debug for Gas {
@@ -118,9 +114,7 @@ impl fmt::Debug for Gas {
 
 /// Defines the gas consumed by an
 /// [`ExecStep`](crate::circuit_input_builder::ExecStep).
-#[derive(
-    Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize,
-)]
+#[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct GasCost(pub(crate) u64);
 
 impl fmt::Debug for GasCost {

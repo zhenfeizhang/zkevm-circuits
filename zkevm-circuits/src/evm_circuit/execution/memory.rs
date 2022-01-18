@@ -41,19 +41,13 @@ impl<F: FieldExt> ExecutionGadget<F> for MemoryGadget<F> {
         let opcode = cb.query_cell();
 
         // In successful case the address must be in 5 bytes
-        let address =
-            MemoryAddress::new(cb.query_bytes(), cb.power_of_randomness());
+        let address = MemoryAddress::new(cb.query_bytes(), cb.power_of_randomness());
         let value = cb.query_word();
 
         // Check if this is an MLOAD
-        let is_mload =
-            IsEqualGadget::construct(cb, opcode.expr(), OpcodeId::MLOAD.expr());
+        let is_mload = IsEqualGadget::construct(cb, opcode.expr(), OpcodeId::MLOAD.expr());
         // Check if this is an MSTORE8
-        let is_mstore8 = IsEqualGadget::construct(
-            cb,
-            opcode.expr(),
-            OpcodeId::MSTORE8.expr(),
-        );
+        let is_mstore8 = IsEqualGadget::construct(cb, opcode.expr(), OpcodeId::MSTORE8.expr());
         // This is an MSTORE/MSTORE8
         let is_store = 1.expr() - is_mload.expr();
         // This in an MSTORE/MLOAD
@@ -64,9 +58,7 @@ impl<F: FieldExt> ExecutionGadget<F> for MemoryGadget<F> {
         let memory_expansion = MemoryExpansionGadget::construct(
             cb,
             cb.curr.state.memory_word_size.expr(),
-            from_bytes::expr(&address.cells)
-                + 1.expr()
-                + (is_not_mstore8.clone() * 31.expr()),
+            from_bytes::expr(&address.cells) + 1.expr() + (is_not_mstore8.clone() * 31.expr()),
         );
 
         /* Stack operations */
@@ -106,9 +98,7 @@ impl<F: FieldExt> ExecutionGadget<F> for MemoryGadget<F> {
                 is_not_mstore8.clone() * idx.expr()
             };
             cb.memory_lookup_with_counter(
-                cb.curr.state.rw_counter.expr()
-                    + cb.rw_counter_offset().expr()
-                    + offset.clone(),
+                cb.curr.state.rw_counter.expr() + cb.rw_counter_offset().expr() + offset.clone(),
                 is_store.clone(),
                 from_bytes::expr(&address.cells) + offset,
                 byte,
@@ -116,11 +106,11 @@ impl<F: FieldExt> ExecutionGadget<F> for MemoryGadget<F> {
         }
 
         // State transition
-        // - `rw_counter` needs to be increased by 34 when is_not_mstore8,
-        //   otherwise to be increased by 31
+        // - `rw_counter` needs to be increased by 34 when is_not_mstore8, otherwise to
+        //   be increased by 31
         // - `program_counter` needs to be increased by 1
-        // - `stack_pointer` needs to be increased by 2 when is_store, otherwise
-        //   to be same
+        // - `stack_pointer` needs to be increased by 2 when is_store, otherwise to be
+        //   same
         // - `memory_size` needs to be set to `next_memory_size`
         let step_state_transition = StepStateTransition {
             rw_counter: Delta(34.expr() - is_mstore8.expr() * 31.expr()),
@@ -160,8 +150,8 @@ impl<F: FieldExt> ExecutionGadget<F> for MemoryGadget<F> {
         let opcode = step.opcode.unwrap();
 
         // Inputs/Outputs
-        let [address, value] = [step.rw_indices[0], step.rw_indices[1]]
-            .map(|idx| block.rws[idx].stack_value());
+        let [address, value] =
+            [step.rw_indices[0], step.rw_indices[1]].map(|idx| block.rws[idx].stack_value());
         self.address.assign(
             region,
             offset,
@@ -214,13 +204,7 @@ mod test {
     };
     use std::iter;
 
-    fn test_ok(
-        opcode: OpcodeId,
-        address: Word,
-        value: Word,
-        _memory_size: u64,
-        gas_cost: u64,
-    ) {
+    fn test_ok(opcode: OpcodeId, address: Word, value: Word, _memory_size: u64, gas_cost: u64) {
         let bytecode = bytecode! {
             PUSH32(value)
             PUSH32(address)
@@ -231,13 +215,9 @@ mod test {
 
         let gas = Gas(gas_cost + 100_000); // add extra gas for the pushes
         let mut block_trace =
-            bus_mapping::mock::BlockData::new_single_tx_trace_code_gas(
-                &bytecode, gas,
-            )
-            .unwrap();
-        block_trace.geth_trace.struct_logs = block_trace.geth_trace.struct_logs
-            [bytecode.get_pos("start")..]
-            .to_vec();
+            bus_mapping::mock::BlockData::new_single_tx_trace_code_gas(&bytecode, gas).unwrap();
+        block_trace.geth_trace.struct_logs =
+            block_trace.geth_trace.struct_logs[bytecode.get_pos("start")..].to_vec();
         let mut builder = block_trace.new_circuit_input_builder();
         builder
             .handle_tx(&block_trace.eth_tx, &block_trace.geth_trace)
@@ -266,9 +246,7 @@ mod test {
         test_ok(
             OpcodeId::MLOAD,
             Word::from(0x12FFFF) + 16,
-            Word::from_big_endian(
-                &(17..33).chain(iter::repeat(0).take(16)).collect::<Vec<_>>(),
-            ),
+            Word::from_big_endian(&(17..33).chain(iter::repeat(0).take(16)).collect::<Vec<_>>()),
             38914,
             3074361,
         );
@@ -292,9 +270,8 @@ mod test {
                 }
                 + 31)
                 / 32;
-            let gas_cost = memory_size * memory_size / 512
-                + 3 * memory_size
-                + GasCost::FASTEST.as_u64();
+            let gas_cost =
+                memory_size * memory_size / 512 + 3 * memory_size + GasCost::FASTEST.as_u64();
             (memory_size, gas_cost)
         };
 
@@ -304,8 +281,7 @@ mod test {
             let max_memory_size_pow_of_two = 15;
             let address = rand_word() % (1u64 << max_memory_size_pow_of_two);
             let value = rand_word();
-            let (memory_size, gas_cost) =
-                calc_memory_size_and_gas_cost(opcode, address);
+            let (memory_size, gas_cost) = calc_memory_size_and_gas_cost(opcode, address);
             test_ok(opcode, address, value, memory_size, gas_cost);
         }
     }

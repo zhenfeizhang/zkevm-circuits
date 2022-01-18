@@ -4,9 +4,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{
-                ConstraintBuilder, StepStateTransition, Transition::Delta,
-            },
+            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
         },
         witness::{Block, Call, ExecStep, Transaction},
     },
@@ -31,12 +29,7 @@ impl<F: FieldExt> ExecutionGadget<F> for JumpdestGadget<F> {
             ..Default::default()
         };
         let opcode = cb.query_cell();
-        let same_context = SameContextGadget::construct(
-            cb,
-            opcode,
-            step_state_transition,
-            None,
-        );
+        let same_context = SameContextGadget::construct(cb, opcode, step_state_transition, None);
 
         Self { same_context }
     }
@@ -56,9 +49,7 @@ impl<F: FieldExt> ExecutionGadget<F> for JumpdestGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::evm_circuit::{
-        test::run_test_circuit_incomplete_fixed_table, witness,
-    };
+    use crate::evm_circuit::{test::run_test_circuit_incomplete_fixed_table, witness};
     use bus_mapping::bytecode;
 
     fn test_ok() {

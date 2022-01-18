@@ -113,10 +113,7 @@ use crate::gates::{
 };
 use halo2::{
     circuit::{Cell, Layouter, Region},
-    plonk::{
-        Advice, Column, ConstraintSystem, Error, Expression, Selector,
-        TableColumn,
-    },
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector, TableColumn},
     poly::Rotation,
 };
 use pairing::arithmetic::FieldExt;
@@ -233,28 +230,23 @@ impl<F: FieldExt> LaneRotateConversionConfig<F> {
                 region.constrain_equal(lane_base_13.0, cell)?;
 
                 let (conversions, special) =
-                    RhoLane::new(f_to_biguint(lane_base_13.1), self.rotation)
-                        .get_full_witness();
+                    RhoLane::new(f_to_biguint(lane_base_13.1), self.rotation).get_full_witness();
 
                 let all_block_counts: Result<Vec<BlockCount2<F>>, Error> = self
                     .chunk_rotate_convert_configs
                     .iter()
                     .zip(conversions.iter())
                     .map(|(config, conv)| {
-                        let block_counts =
-                            config.assign_region(&mut region, offset, conv)?;
+                        let block_counts = config.assign_region(&mut region, offset, conv)?;
                         offset += 1;
                         Ok(block_counts)
                     })
                     .collect();
                 let all_block_counts = all_block_counts?;
-                let block_counts =
-                    all_block_counts.last().ok_or(Error::Synthesis)?;
-                let lane = self.special_chunk_config.assign_region(
-                    &mut region,
-                    offset,
-                    special,
-                )?;
+                let block_counts = all_block_counts.last().ok_or(Error::Synthesis)?;
+                let lane = self
+                    .special_chunk_config
+                    .assign_region(&mut region, offset, special)?;
                 Ok((lane, *block_counts))
             },
         )?;
@@ -304,8 +296,7 @@ impl<F: FieldExt> ChunkRotateConversionConfig<F> {
             fix_cols,
         );
 
-        let power_of_b13 =
-            F::from(B13.into()).pow(&[chunk_idx.into(), 0, 0, 0]);
+        let power_of_b13 = F::from(B13.into()).pow(&[chunk_idx.into(), 0, 0, 0]);
 
         // | coef | 13**x | acc       |
         // |------|-------|-----------|
@@ -325,12 +316,8 @@ impl<F: FieldExt> ChunkRotateConversionConfig<F> {
                 q_enable * (acc_next - acc + coef * power_of_base),
             )]
         });
-        let power_of_b9 = F::from(B9.into()).pow(&[
-            ((rotation + chunk_idx) % LANE_SIZE).into(),
-            0,
-            0,
-            0,
-        ]);
+        let power_of_b9 =
+            F::from(B9.into()).pow(&[((rotation + chunk_idx) % LANE_SIZE).into(), 0, 0, 0]);
         // | coef | 9**x  |    acc |
         // |------|-------|--------|
         // |  a   |  b    |      0 |
@@ -352,12 +339,8 @@ impl<F: FieldExt> ChunkRotateConversionConfig<F> {
             ]
         });
 
-        let block_count_acc_config = BlockCountAccConfig::configure(
-            meta,
-            q_enable,
-            adv.bc.clone(),
-            step,
-        );
+        let block_count_acc_config =
+            BlockCountAccConfig::configure(meta, q_enable, adv.bc.clone(), step);
 
         Self {
             q_enable,
@@ -413,11 +396,9 @@ impl<F: FieldExt> ChunkRotateConversionConfig<F> {
             offset,
             || Ok(biguint_to_f::<F>(&conv.output.pre_acc)),
         )?;
-        let block_counts = self.block_count_acc_config.assign_region(
-            region,
-            offset,
-            &conv.overflow_detector,
-        )?;
+        let block_counts =
+            self.block_count_acc_config
+                .assign_region(region, offset, &conv.overflow_detector)?;
         Ok(block_counts)
     }
 }
@@ -442,26 +423,17 @@ impl<F: FieldExt> SpecialChunkConfig<F> {
         rotation: u64,
     ) -> Self {
         meta.create_gate("validate base_9_acc", |meta| {
-            let delta_base_9_acc = meta
-                .query_advice(base_9_acc, Rotation::next())
+            let delta_base_9_acc = meta.query_advice(base_9_acc, Rotation::next())
                 - meta.query_advice(base_9_acc, Rotation::cur());
             let last_b9_coef = meta.query_advice(last_b9_coef, Rotation::cur());
-            let pow_of_9 = Expression::Constant(
-                F::from(B9.into()).pow(&[rotation, 0, 0, 0]),
-            );
+            let pow_of_9 = Expression::Constant(F::from(B9.into()).pow(&[rotation, 0, 0, 0]));
             vec![(
                 "delta_base_9_acc === (high_value + low_value) * 9**rotation",
-                meta.query_selector(q_enable)
-                    * (delta_base_9_acc - last_b9_coef * pow_of_9),
+                meta.query_selector(q_enable) * (delta_base_9_acc - last_b9_coef * pow_of_9),
             )]
         });
-        let special_chunk_table_config = SpecialChunkTableConfig::configure(
-            meta,
-            q_enable,
-            base_13_acc,
-            last_b9_coef,
-            special,
-        );
+        let special_chunk_table_config =
+            SpecialChunkTableConfig::configure(meta, q_enable, base_13_acc, last_b9_coef, special);
         Self {
             q_enable,
             last_b9_coef,
@@ -502,12 +474,8 @@ impl<F: FieldExt> SpecialChunkConfig<F> {
             || Ok(F::zero()),
         )?;
         let value = biguint_to_f::<F>(&special.output_acc_post);
-        let cell = region.assign_advice(
-            || "input_acc",
-            self.base_9_acc,
-            offset + 1,
-            || Ok(value),
-        )?;
+        let cell =
+            region.assign_advice(|| "input_acc", self.base_9_acc, offset + 1, || Ok(value))?;
 
         Ok((cell, value))
     }
@@ -535,15 +503,13 @@ impl<F: FieldExt> BlockCountAccConfig<F> {
         if step == 1 {
             meta.create_gate("block count step 1", |meta| {
                 let q_all = meta.query_selector(q_all);
-                let block_count =
-                    meta.query_advice(bc.block_count, Rotation::cur());
+                let block_count = meta.query_advice(bc.block_count, Rotation::cur());
                 vec![("block_count === 0", q_all * block_count)]
             });
         }
         meta.create_gate("first row", |meta| {
             let q_first = meta.query_selector(q_first);
-            let block_count =
-                meta.query_advice(bc.block_count, Rotation::cur());
+            let block_count = meta.query_advice(bc.block_count, Rotation::cur());
             let step2_acc = meta.query_advice(bc.step2_acc, Rotation::cur());
             let step3_acc = meta.query_advice(bc.step3_acc, Rotation::cur());
             vec![match step {
@@ -562,14 +528,11 @@ impl<F: FieldExt> BlockCountAccConfig<F> {
 
         meta.create_gate("Running up block count", |meta| {
             let q_rest = meta.query_selector(q_rest);
-            let block_count =
-                meta.query_advice(bc.block_count, Rotation::cur());
+            let block_count = meta.query_advice(bc.block_count, Rotation::cur());
             let step2_acc = meta.query_advice(bc.step2_acc, Rotation::cur());
-            let step2_acc_prev =
-                meta.query_advice(bc.step2_acc, Rotation::prev());
+            let step2_acc_prev = meta.query_advice(bc.step2_acc, Rotation::prev());
             let step3_acc = meta.query_advice(bc.step3_acc, Rotation::cur());
-            let step3_acc_prev =
-                meta.query_advice(bc.step3_acc, Rotation::prev());
+            let step3_acc_prev = meta.query_advice(bc.step3_acc, Rotation::prev());
 
             let step2_poly = {
                 if step == 2 {
@@ -666,26 +629,20 @@ impl<F: FieldExt> BlockCountFinalConfig<F> {
 
         meta.create_gate("block count final check", |meta| {
             let q_enable = meta.query_selector(q_enable);
-            let step2_acc =
-                meta.query_advice(block_count_cols[0], Rotation::cur());
-            let step3_acc =
-                meta.query_advice(block_count_cols[1], Rotation::cur());
+            let step2_acc = meta.query_advice(block_count_cols[0], Rotation::cur());
+            let step3_acc = meta.query_advice(block_count_cols[1], Rotation::cur());
             let one = Expression::Constant(F::one());
             iter::empty()
                 .chain(Some((
                     "step2_acc <= 12",
                     (0..=STEP2_RANGE)
-                        .map(|x| {
-                            step2_acc.clone() - Expression::Constant(F::from(x))
-                        })
+                        .map(|x| step2_acc.clone() - Expression::Constant(F::from(x)))
                         .fold(one.clone(), |acc, x| acc * x),
                 )))
                 .chain(Some((
                     "step3_acc <= 13 * 13",
                     (0..=STEP3_RANGE)
-                        .map(|x| {
-                            step3_acc.clone() - Expression::Constant(F::from(x))
-                        })
+                        .map(|x| step3_acc.clone() - Expression::Constant(F::from(x)))
                         .fold(one, |acc, x| acc * x),
                 )))
                 .map(|(name, poly)| (name, q_enable.clone() * poly))

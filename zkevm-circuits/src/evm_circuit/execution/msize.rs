@@ -5,9 +5,7 @@ use crate::{
         step::ExecutionState,
         util::{
             common_gadget::SameContextGadget,
-            constraint_builder::{
-                ConstraintBuilder, StepStateTransition, Transition::Delta,
-            },
+            constraint_builder::{ConstraintBuilder, StepStateTransition, Transition::Delta},
             from_bytes, RandomLinearCombination,
         },
         witness::{Block, Call, ExecStep, Transaction},
@@ -38,8 +36,7 @@ impl<F: FieldExt> ExecutionGadget<F> for MsizeGadget<F> {
         );
 
         // Push the value on the stack
-        let value =
-            RandomLinearCombination::new(bytes, cb.power_of_randomness());
+        let value = RandomLinearCombination::new(bytes, cb.power_of_randomness());
         cb.stack_push(value.expr());
 
         // State transition
@@ -50,12 +47,7 @@ impl<F: FieldExt> ExecutionGadget<F> for MsizeGadget<F> {
             ..Default::default()
         };
         let opcode = cb.query_cell();
-        let same_context = SameContextGadget::construct(
-            cb,
-            opcode,
-            step_state_transition,
-            None,
-        );
+        let same_context = SameContextGadget::construct(cb, opcode, step_state_transition, None);
 
         Self {
             same_context,
@@ -73,11 +65,8 @@ impl<F: FieldExt> ExecutionGadget<F> for MsizeGadget<F> {
         step: &ExecStep,
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;
-        self.value.assign(
-            region,
-            offset,
-            Some(step.memory_size.to_le_bytes()),
-        )?;
+        self.value
+            .assign(region, offset, Some(step.memory_size.to_le_bytes()))?;
 
         Ok(())
     }
@@ -85,9 +74,7 @@ impl<F: FieldExt> ExecutionGadget<F> for MsizeGadget<F> {
 
 #[cfg(test)]
 mod test {
-    use crate::evm_circuit::{
-        test::run_test_circuit_incomplete_fixed_table, witness,
-    };
+    use crate::evm_circuit::{test::run_test_circuit_incomplete_fixed_table, witness};
     use bus_mapping::{bytecode, eth_types::Word};
 
     #[test]

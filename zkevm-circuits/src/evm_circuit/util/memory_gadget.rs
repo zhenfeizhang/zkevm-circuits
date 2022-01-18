@@ -24,8 +24,7 @@ pub(crate) mod address_low {
     }
 
     pub(crate) fn value<F: FieldExt>(address: [u8; 32]) -> Address {
-        from_bytes::value::<F>(&address[0..NUM_ADDRESS_BYTES_USED])
-            .get_lower_128() as Address
+        from_bytes::value::<F>(&address[0..NUM_ADDRESS_BYTES_USED]).get_lower_128() as Address
     }
 }
 
@@ -56,12 +55,8 @@ pub(crate) struct MemoryWordSizeGadget<F> {
 }
 
 impl<F: FieldExt> MemoryWordSizeGadget<F> {
-    pub(crate) fn construct(
-        cb: &mut ConstraintBuilder<F>,
-        address: Expression<F>,
-    ) -> Self {
-        let memory_word_size =
-            ConstantDivisionGadget::construct(cb, address + 31.expr(), 32);
+    pub(crate) fn construct(cb: &mut ConstraintBuilder<F>, address: Expression<F>) -> Self {
+        let memory_word_size = ConstantDivisionGadget::construct(cb, address + 31.expr(), 32);
 
         Self { memory_word_size }
     }
@@ -77,11 +72,9 @@ impl<F: FieldExt> MemoryWordSizeGadget<F> {
         offset: usize,
         address: Address,
     ) -> Result<MemorySize, Error> {
-        let (quotient, _) = self.memory_word_size.assign(
-            region,
-            offset,
-            (address as u128) + 31,
-        )?;
+        let (quotient, _) = self
+            .memory_word_size
+            .assign(region, offset, (address as u128) + 31)?;
         Ok(quotient as MemorySize)
     }
 }
@@ -92,8 +85,7 @@ impl<F: FieldExt> MemoryWordSizeGadget<F> {
 /// `memory_cost = Gmem * memory_word_size + floor(memory_word_size *
 /// memory_word_size / 512)`
 #[derive(Clone, Debug)]
-pub(crate) struct MemoryExpansionGadget<F, const MAX_QUAD_COST_IN_BYTES: usize>
-{
+pub(crate) struct MemoryExpansionGadget<F, const MAX_QUAD_COST_IN_BYTES: usize> {
     addr_memory_word_size: MemoryWordSizeGadget<F>,
     next_memory_word_size: MaxGadget<F, MAX_MEMORY_SIZE_IN_BYTES>,
     curr_quad_memory_cost: ConstantDivisionGadget<F, MAX_QUAD_COST_IN_BYTES>,
@@ -121,8 +113,7 @@ impl<F: FieldExt, const MAX_QUAD_COST_IN_BYTES: usize>
     ) -> Self {
         // Calculate the memory size of the memory access
         // `addr_memory_word_size < 256**MAX_MEMORY_SIZE_IN_BYTES`
-        let addr_memory_word_size =
-            MemoryWordSizeGadget::construct(cb, address);
+        let addr_memory_word_size = MemoryWordSizeGadget::construct(cb, address);
 
         // The memory size needs to be updated if this memory access
         // requires expanding the memory.
@@ -182,8 +173,7 @@ impl<F: FieldExt, const MAX_QUAD_COST_IN_BYTES: usize>
         address: Address,
     ) -> Result<(MemorySize, u128), Error> {
         // Calculate the active memory word size
-        let addr_memory_word_size =
-            self.addr_memory_word_size.assign(region, offset, address)?;
+        let addr_memory_word_size = self.addr_memory_word_size.assign(region, offset, address)?;
 
         // Calculate the next memory word size
         let next_memory_word_size = self
@@ -209,8 +199,7 @@ impl<F: FieldExt, const MAX_QUAD_COST_IN_BYTES: usize>
         )?;
 
         // Calculate the gas cost for the expansian
-        let memory_cost = (next_memory_word_size - curr_memory_word_size)
-            as u128
+        let memory_cost = (next_memory_word_size - curr_memory_word_size) as u128
             * (Self::GAS_MEM.as_u64() as u128)
             + (next_quad_memory_cost - curr_quad_memory_cost);
 

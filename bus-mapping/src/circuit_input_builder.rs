@@ -1,13 +1,9 @@
 //! This module contains the CircuitInputBuilder, which is an object that takes
 //! types from geth / web3 and outputs the circuit inputs.
 use crate::eth_types::{
-    self, Address, ChainConstants, GethExecStep, GethExecTrace, Hash,
-    ToAddress, ToBigEndian, Word,
+    self, Address, ChainConstants, GethExecStep, GethExecTrace, Hash, ToAddress, ToBigEndian, Word,
 };
-use crate::evm::{
-    Gas, GasCost, MemoryAddress, OpcodeId, ProgramCounter, RWCounter,
-    StackAddress,
-};
+use crate::evm::{Gas, GasCost, MemoryAddress, OpcodeId, ProgramCounter, RWCounter, StackAddress};
 use crate::exec_trace::OperationRef;
 use crate::external_tracer::BlockConstants;
 use crate::geth_errors::*;
@@ -313,14 +309,12 @@ impl TransactionContext {
     }
 
     fn call_ctx(&self) -> &CallContext {
-        let (_, call_ctx) =
-            self.call_stack.last().expect("call_stack is empty");
+        let (_, call_ctx) = self.call_stack.last().expect("call_stack is empty");
         call_ctx
     }
 
     fn call_ctx_mut(&mut self) -> &mut CallContext {
-        let (_, ref mut call_ctx) =
-            self.call_stack.last_mut().expect("call_stack is empty");
+        let (_, ref mut call_ctx) = self.call_stack.last_mut().expect("call_stack is empty");
         call_ctx
     }
 
@@ -434,8 +428,7 @@ impl Transaction {
         code_source: CodeSource,
         code_hash: Hash,
     ) -> usize {
-        let is_static =
-            kind == CallKind::StaticCall || self.calls[parent_index].is_static;
+        let is_static = kind == CallKind::StaticCall || self.calls[parent_index].is_static;
         self.calls.push(Call {
             call_id,
             kind,
@@ -486,12 +479,7 @@ impl<'a> CircuitInputStateRef<'a> {
     /// the stored operation ([`OperationRef`]) inside the bus-mapping
     /// instance of the current [`ExecStep`].  Then increase the `block_ctx`
     /// [`RWCounter`] by one.
-    pub fn push_memory_op(
-        &mut self,
-        rw: RW,
-        address: MemoryAddress,
-        value: u8,
-    ) {
+    pub fn push_memory_op(&mut self, rw: RW, address: MemoryAddress, value: u8) {
         let call_id = self.call().call_id;
         self.push_op(MemoryOp {
             rw,
@@ -506,12 +494,7 @@ impl<'a> CircuitInputStateRef<'a> {
     /// the stored operation ([`OperationRef`]) inside the bus-mapping
     /// instance of the current [`ExecStep`].  Then increase the `block_ctx`
     /// [`RWCounter`] by one.
-    pub fn push_stack_op(
-        &mut self,
-        rw: RW,
-        address: StackAddress,
-        value: Word,
-    ) {
+    pub fn push_stack_op(&mut self, rw: RW, address: StackAddress, value: Word) {
         let call_id = self.call().call_id;
         self.push_op(StackOp {
             rw,
@@ -547,14 +530,9 @@ impl<'a> CircuitInputStateRef<'a> {
     ) {
         let parent_index = self.tx_ctx.call_index();
         let call_id = self.block_ctx.rwc.0;
-        let index = self.tx.push_call(
-            parent_index,
-            call_id,
-            kind,
-            address,
-            code_source,
-            code_hash,
-        );
+        let index = self
+            .tx
+            .push_call(parent_index, call_id, kind, address, code_source, code_hash);
         self.tx_ctx
             .push_call_index_ctx(index, CallContext { swc: 0 });
     }
@@ -585,10 +563,9 @@ impl<'a> CircuitInputStateRef<'a> {
     /// Return the contract address of a *CALL*/CREATE* step.
     fn call_address(&self, step: &GethExecStep) -> Result<Address, Error> {
         Ok(match step.op {
-            OpcodeId::CALL
-            | OpcodeId::CALLCODE
-            | OpcodeId::DELEGATECALL
-            | OpcodeId::STATICCALL => step.stack.nth_last(1)?.to_address(),
+            OpcodeId::CALL | OpcodeId::CALLCODE | OpcodeId::DELEGATECALL | OpcodeId::STATICCALL => {
+                step.stack.nth_last(1)?.to_address()
+            }
             OpcodeId::CREATE => self.create_address()?,
             OpcodeId::CREATE2 => self.create2_address(step)?,
             _ => return Err(Error::OpcodeIdNotCallType),
@@ -652,9 +629,7 @@ impl<'a> CircuitInputStateRef<'a> {
         }
 
         // When last step is RETURN or STOP there's no error.
-        if matches!(next_step, None)
-            && matches!(step.op, OpcodeId::RETURN | OpcodeId::STOP)
-        {
+        if matches!(next_step, None) && matches!(step.op, OpcodeId::RETURN | OpcodeId::STOP) {
             return Ok(None);
         }
 
@@ -670,9 +645,7 @@ impl<'a> CircuitInputStateRef<'a> {
                 return Ok(Some(match step.op {
                     OpcodeId::REVERT => ExecError::ExecutionReverted,
                     OpcodeId::JUMP | OpcodeId::JUMPI => ExecError::InvalidJump,
-                    OpcodeId::RETURNDATACOPY => {
-                        ExecError::ReturnDataOutOfBounds
-                    }
+                    OpcodeId::RETURNDATACOPY => ExecError::ReturnDataOutOfBounds,
                     _ => {
                         return Err(Error::UnexpectedExecStepError(
                             "call failure without return",
@@ -692,13 +665,10 @@ impl<'a> CircuitInputStateRef<'a> {
                         return Ok(Some(ExecError::MaxCodeSizeExceeded));
                     } else if length > Word::zero()
                         && !step.memory.0.is_empty()
-                        && step.memory.0.get(offset.low_u64() as usize)
-                            == Some(&0xef)
+                        && step.memory.0.get(offset.low_u64() as usize) == Some(&0xef)
                     {
                         return Ok(Some(ExecError::InvalidCode));
-                    } else if Word::from(200u64) * length
-                        > Word::from(step.gas.0)
-                    {
+                    } else if Word::from(200u64) * length > Word::from(step.gas.0) {
                         return Ok(Some(ExecError::CodeStoreOutOfGas));
                     } else {
                         return Err(Error::UnexpectedExecStepError(
@@ -749,12 +719,8 @@ impl<'a> CircuitInputStateRef<'a> {
 
             // Insufficient_balance
             let value = match step.op {
-                OpcodeId::CALL | OpcodeId::CALLCODE => {
-                    step.stack.nth_last(2)?
-                }
-                OpcodeId::CREATE | OpcodeId::CREATE2 => {
-                    step.stack.nth_last(0)?
-                }
+                OpcodeId::CALL | OpcodeId::CALLCODE => step.stack.nth_last(2)?,
+                OpcodeId::CREATE | OpcodeId::CREATE2 => step.stack.nth_last(0)?,
                 _ => Word::zero(),
             };
             let sender = self.call().address;
@@ -858,10 +824,7 @@ impl<'a> CircuitInputBuilder {
     }
 
     /// Create a new Transaction from a [`eth_types::Transaction`].
-    pub fn new_tx(
-        &mut self,
-        eth_tx: &eth_types::Transaction,
-    ) -> Result<Transaction, Error> {
+    pub fn new_tx(&mut self, eth_tx: &eth_types::Transaction) -> Result<Transaction, Error> {
         let call_id = self.block_ctx.rwc.0;
         Transaction::new(call_id, &self.sdb, &mut self.code_db, eth_tx)
     }
@@ -885,13 +848,11 @@ impl<'a> CircuitInputBuilder {
                 tx_ctx.call_ctx().swc,
             );
             let mut state_ref = self.state_ref(&mut tx, &mut tx_ctx, &mut step);
-            geth_step.op.gen_associated_ops(
-                &mut state_ref,
-                &geth_trace.struct_logs[index..],
-            )?;
+            geth_step
+                .op
+                .gen_associated_ops(&mut state_ref, &geth_trace.struct_logs[index..])?;
 
-            if let Some(geth_next_step) = geth_trace.struct_logs.get(index + 1)
-            {
+            if let Some(geth_next_step) = geth_trace.struct_logs.get(index + 1) {
                 if geth_step.depth + 1 == geth_next_step.depth {
                     // Handle *CALL*/CREATE*
                     state_ref.handle_call_create(geth_step)?;
@@ -910,9 +871,7 @@ impl<'a> CircuitInputBuilder {
 fn get_step_reported_error(op: &OpcodeId, error: &str) -> ExecError {
     if error == GETH_ERR_WRITE_PROTECTION {
         ExecError::WriteProtection
-    } else if error == GETH_ERR_OUT_OF_GAS
-        || error == GETH_ERR_GAS_UINT_OVERFLOW
-    {
+    } else if error == GETH_ERR_OUT_OF_GAS || error == GETH_ERR_GAS_UINT_OVERFLOW {
         // NOTE: We report a GasUintOverflow error as an OutOfGas error
         let oog_err = match op {
             OpcodeId::SHA3 => OogError::Sha3,
@@ -920,10 +879,7 @@ fn get_step_reported_error(op: &OpcodeId, error: &str) -> ExecError {
             OpcodeId::CODECOPY => OogError::CodeCopy,
             OpcodeId::EXTCODECOPY => OogError::ExtCodeCopy,
             OpcodeId::RETURNDATACOPY => OogError::ReturnDataCopy,
-            OpcodeId::LOG0
-            | OpcodeId::LOG2
-            | OpcodeId::LOG3
-            | OpcodeId::LOG4 => OogError::Log,
+            OpcodeId::LOG0 | OpcodeId::LOG2 | OpcodeId::LOG3 | OpcodeId::LOG4 => OogError::Log,
             OpcodeId::CALL => OogError::Call,
             OpcodeId::CALLCODE => OogError::CallCode,
             OpcodeId::DELEGATECALL => OogError::DelegateCall,
@@ -953,8 +909,7 @@ fn get_step_reported_error(op: &OpcodeId, error: &str) -> ExecError {
 pub fn get_create_init_code(step: &GethExecStep) -> Result<&[u8], Error> {
     let offset = step.stack.nth_last(1)?;
     let length = step.stack.nth_last(2)?;
-    Ok(&step.memory.0[offset.low_u64() as usize
-        ..(offset.low_u64() + length.low_u64()) as usize])
+    Ok(&step.memory.0[offset.low_u64() as usize..(offset.low_u64() + length.low_u64()) as usize])
 }
 
 /// State and Code Access with "keys/index" used in the access operation.
@@ -1026,18 +981,16 @@ impl From<Vec<Access>> for AccessSet {
                 AccessValue::Account { address } => {
                     state.entry(address).or_insert_with(HashSet::new);
                 }
-                AccessValue::Storage { address, key } => {
-                    match state.entry(address) {
-                        Entry::Vacant(entry) => {
-                            let mut storage = HashSet::new();
-                            storage.insert(key);
-                            entry.insert(storage);
-                        }
-                        Entry::Occupied(mut entry) => {
-                            entry.get_mut().insert(key);
-                        }
+                AccessValue::Storage { address, key } => match state.entry(address) {
+                    Entry::Vacant(entry) => {
+                        let mut storage = HashSet::new();
+                        storage.insert(key);
+                        entry.insert(storage);
                     }
-                }
+                    Entry::Occupied(mut entry) => {
+                        entry.get_mut().insert(key);
+                    }
+                },
                 AccessValue::Code { address } => {
                     code.insert(address);
                 }
@@ -1176,8 +1129,7 @@ pub fn gen_state_access_trace<TX>(
             OpcodeId::DELEGATECALL => {
                 let address = step.stack.nth_last(1)?.to_address();
                 accs.push(Access::new(i, READ, Code { address }));
-                call_stack
-                    .push((contract_address, CodeSource::Address(address)));
+                call_stack.push((contract_address, CodeSource::Address(address)));
             }
             OpcodeId::STATICCALL => {
                 let address = step.stack.nth_last(1)?.to_address();
@@ -1230,8 +1182,7 @@ impl<P: JsonRpcClient> BuilderClient<P> {
         block_num: u64,
     ) -> Result<(EthBlock, Vec<eth_types::GethExecTrace>), Error> {
         let eth_block = self.cli.get_block_by_number(block_num.into()).await?;
-        let geth_traces =
-            self.cli.trace_block_by_number(block_num.into()).await?;
+        let geth_traces = self.cli.trace_block_by_number(block_num.into()).await?;
         Ok((eth_block, geth_traces))
     }
 
@@ -1244,8 +1195,7 @@ impl<P: JsonRpcClient> BuilderClient<P> {
         let mut block_access_trace = Vec::new();
         for (tx_index, tx) in eth_block.transactions.iter().enumerate() {
             let geth_trace = &geth_traces[tx_index];
-            let tx_access_trace =
-                gen_state_access_trace(eth_block, tx, geth_trace)?;
+            let tx_access_trace = gen_state_access_trace(eth_block, tx, geth_trace)?;
             block_access_trace.extend(tx_access_trace);
         }
 
@@ -1332,10 +1282,7 @@ impl<P: JsonRpcClient> BuilderClient<P> {
             code_db,
             eth_block,
             self.constants.clone(),
-            BlockConstants::from_eth_block(
-                eth_block,
-                &Word::from(self.constants.chain_id),
-            ),
+            BlockConstants::from_eth_block(eth_block, &Word::from(self.constants.chain_id)),
         );
         for (tx_index, tx) in eth_block.transactions.iter().enumerate() {
             let geth_trace = &geth_traces[tx_index];
@@ -1345,20 +1292,12 @@ impl<P: JsonRpcClient> BuilderClient<P> {
     }
 
     /// Perform all the steps to generate the circuit inputs
-    pub async fn gen_inputs(
-        &self,
-        block_num: u64,
-    ) -> Result<CircuitInputBuilder, Error> {
+    pub async fn gen_inputs(&self, block_num: u64) -> Result<CircuitInputBuilder, Error> {
         let (eth_block, geth_traces) = self.get_block(block_num).await?;
         let access_set = self.get_state_accesses(&eth_block, &geth_traces)?;
         let (proofs, codes) = self.get_state(block_num, access_set).await?;
         let (state_db, code_db) = self.build_state_code_db(proofs, codes);
-        let builder = self.gen_inputs_from_state(
-            state_db,
-            code_db,
-            &eth_block,
-            &geth_traces,
-        )?;
+        let builder = self.gen_inputs_from_state(state_db, code_db, &eth_block, &geth_traces)?;
         Ok(builder)
     }
 }
@@ -1403,19 +1342,15 @@ mod tracer_tests {
         }
 
         fn state_ref(&mut self) -> CircuitInputStateRef {
-            self.builder.state_ref(
-                &mut self.tx,
-                &mut self.tx_ctx,
-                &mut self.step,
-            )
+            self.builder
+                .state_ref(&mut self.tx, &mut self.tx_ctx, &mut self.step)
         }
     }
 
     lazy_static! {
         static ref ADDR_A: Address = Address::zero();
         static ref WORD_ADDR_A: Word = ADDR_A.to_word();
-        static ref ADDR_B: Address =
-            address!("0x0000000000000000000000000000000000000123");
+        static ref ADDR_B: Address = address!("0x0000000000000000000000000000000000000123");
         static ref WORD_ADDR_B: Word = ADDR_B.to_word();
     }
 
@@ -1426,10 +1361,7 @@ mod tracer_tests {
     // are used internally but not propagated in geth to the scope where the
     // tracer is used.
 
-    fn check_err_depth(
-        step: &GethExecStep,
-        next_step: Option<&GethExecStep>,
-    ) -> bool {
+    fn check_err_depth(step: &GethExecStep, next_step: Option<&GethExecStep>) -> bool {
         matches!(
             step.op,
             OpcodeId::CALL
@@ -1458,11 +1390,9 @@ mod tracer_tests {
                  PUSH2(0xab)
                  STOP
         };
-        let block = mock::BlockData::new_single_tx_trace_code_gas(
-            &code,
-            Gas(1_000_000_000_000_000u64),
-        )
-        .unwrap();
+        let block =
+            mock::BlockData::new_single_tx_trace_code_gas(&code, Gas(1_000_000_000_000_000u64))
+                .unwrap();
         let struct_logs = &block.geth_trace.struct_logs;
 
         // get last CALL
@@ -1515,9 +1445,7 @@ mod tracer_tests {
 
             PUSH3(0xbb)
         };
-        let block =
-            mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b)
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b).unwrap();
 
         // get last CALL
         let (index, step) = block
@@ -1608,9 +1536,7 @@ mod tracer_tests {
             PUSH3(0xbb)
         };
         code_b.append(&code_b_end);
-        let block =
-            mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b)
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b).unwrap();
 
         // get last CREATE2
         let (index, step) = block
@@ -1639,12 +1565,9 @@ mod tracer_tests {
 
         let mut builder = CircuitInputBuilderTx::new(&block, step);
         // Set up call context at CREATE2
-        builder.state_ref().push_call(
-            CallKind::Create,
-            *ADDR_B,
-            CodeSource::Memory,
-            Hash::zero(),
-        );
+        builder
+            .state_ref()
+            .push_call(CallKind::Create, *ADDR_B, CodeSource::Memory, Hash::zero());
         // Set up account and contract that exist during the second CREATE2
         builder.builder.sdb.set_account(
             &ADDR_B,
@@ -1733,9 +1656,7 @@ mod tracer_tests {
             PUSH3(0xbb)
         };
         code_b.append(&code_b_end);
-        let block =
-            mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b)
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b).unwrap();
 
         // get last RETURN
         let (index, step) = block
@@ -1751,22 +1672,16 @@ mod tracer_tests {
 
         let mut builder = CircuitInputBuilderTx::new(&block, step);
         // Set up call context at CREATE
-        builder.state_ref().push_call(
-            CallKind::Create,
-            *ADDR_B,
-            CodeSource::Memory,
-            Hash::zero(),
-        );
+        builder
+            .state_ref()
+            .push_call(CallKind::Create, *ADDR_B, CodeSource::Memory, Hash::zero());
         assert_eq!(
             builder.state_ref().get_step_err(step, next_step).unwrap(),
             Some(ExecError::CodeStoreOutOfGas)
         );
     }
 
-    fn check_err_invalid_code(
-        step: &GethExecStep,
-        next_step: Option<&GethExecStep>,
-    ) -> bool {
+    fn check_err_invalid_code(step: &GethExecStep, next_step: Option<&GethExecStep>) -> bool {
         let offset = step.stack.nth_last(0).unwrap();
         let length = step.stack.nth_last(1).unwrap();
         step.op == OpcodeId::RETURN
@@ -1827,9 +1742,7 @@ mod tracer_tests {
             PUSH3(0xbb)
         };
         code_b.append(&code_b_end);
-        let block =
-            mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b)
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b).unwrap();
 
         // get last RETURN
         let (index, step) = block
@@ -1845,12 +1758,9 @@ mod tracer_tests {
 
         let mut builder = CircuitInputBuilderTx::new(&block, step);
         // Set up call context at RETURN
-        builder.state_ref().push_call(
-            CallKind::Create,
-            *ADDR_B,
-            CodeSource::Memory,
-            Hash::zero(),
-        );
+        builder
+            .state_ref()
+            .push_call(CallKind::Create, *ADDR_B, CodeSource::Memory, Hash::zero());
         assert_eq!(
             builder.state_ref().get_step_err(step, next_step).unwrap(),
             Some(ExecError::InvalidCode)
@@ -1919,9 +1829,7 @@ mod tracer_tests {
             PUSH3(0xbb)
         };
         code_b.append(&code_b_end);
-        let block =
-            mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b)
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b).unwrap();
 
         // get last RETURN
         let (index, step) = block
@@ -1937,12 +1845,9 @@ mod tracer_tests {
 
         let mut builder = CircuitInputBuilderTx::new(&block, step);
         // Set up call context at RETURN
-        builder.state_ref().push_call(
-            CallKind::Create,
-            *ADDR_B,
-            CodeSource::Memory,
-            Hash::zero(),
-        );
+        builder
+            .state_ref()
+            .push_call(CallKind::Create, *ADDR_B, CodeSource::Memory, Hash::zero());
         assert_eq!(
             builder.state_ref().get_step_err(step, next_step).unwrap(),
             Some(ExecError::MaxCodeSizeExceeded)
@@ -1998,9 +1903,7 @@ mod tracer_tests {
             PUSH3(0xbb)
         };
         code_b.append(&code_b_end);
-        let block =
-            mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b)
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b).unwrap();
 
         // get first STOP
         let (index, step) = block
@@ -2014,12 +1917,9 @@ mod tracer_tests {
 
         let mut builder = CircuitInputBuilderTx::new(&block, step);
         // Set up call context at STOP
-        builder.state_ref().push_call(
-            CallKind::Create,
-            *ADDR_B,
-            CodeSource::Memory,
-            Hash::zero(),
-        );
+        builder
+            .state_ref()
+            .push_call(CallKind::Create, *ADDR_B, CodeSource::Memory, Hash::zero());
         assert_eq!(
             builder.state_ref().get_step_err(step, next_step).unwrap(),
             None
@@ -2039,10 +1939,7 @@ mod tracer_tests {
             .unwrap_or_else(Word::zero)
     }
 
-    fn check_err_invalid_jump(
-        step: &GethExecStep,
-        next_step: Option<&GethExecStep>,
-    ) -> bool {
+    fn check_err_invalid_jump(step: &GethExecStep, next_step: Option<&GethExecStep>) -> bool {
         let next_depth = next_step.map(|s| s.depth).unwrap_or(0);
         matches!(step.op, OpcodeId::JUMP | OpcodeId::JUMPI)
             && step.error.is_none()
@@ -2087,8 +1984,7 @@ mod tracer_tests {
             PUSH2(0xaa)
         };
         let index = 8; // JUMP
-        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code)
-            .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code).unwrap();
         let step = &block.geth_trace.struct_logs[index];
         let next_step = block.geth_trace.struct_logs.get(index + 1);
         assert!(check_err_invalid_jump(step, next_step));
@@ -2100,10 +1996,7 @@ mod tracer_tests {
         );
     }
 
-    fn check_err_execution_reverted(
-        step: &GethExecStep,
-        next_step: Option<&GethExecStep>,
-    ) -> bool {
+    fn check_err_execution_reverted(step: &GethExecStep, next_step: Option<&GethExecStep>) -> bool {
         let next_depth = next_step.map(|s| s.depth).unwrap_or(0);
         step.op == OpcodeId::REVERT
             && step.error.is_none()
@@ -2150,8 +2043,7 @@ mod tracer_tests {
             PUSH2(0xaa)
         };
         let index = 10; // REVERT
-        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code)
-            .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code).unwrap();
         let step = &block.geth_trace.struct_logs[index];
         let next_step = block.geth_trace.struct_logs.get(index + 1);
         assert!(check_err_execution_reverted(step, next_step));
@@ -2188,8 +2080,7 @@ mod tracer_tests {
             PUSH2(0xaa)
         };
         let index = 10; // STOP
-        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code)
-            .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code).unwrap();
         let step = &block.geth_trace.struct_logs[index];
         let next_step = block.geth_trace.struct_logs.get(index + 1);
 
@@ -2240,9 +2131,7 @@ mod tracer_tests {
             PUSH1(0x00) // offset
             RETURN
         };
-        let block =
-            mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b)
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b).unwrap();
 
         // get last RETURNDATACOPY
         let (index, step) = block
@@ -2340,9 +2229,7 @@ mod tracer_tests {
 
             PUSH3(0xbb)
         };
-        let block =
-            mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b)
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b).unwrap();
 
         let index = 9; // SSTORE
         let step = &block.geth_trace.struct_logs[index];
@@ -2365,9 +2252,7 @@ mod tracer_tests {
             PUSH1(0x1)
             PUSH1(0x2)
         };
-        let block =
-            mock::BlockData::new_single_tx_trace_code_gas(&code, Gas(4))
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_gas(&code, Gas(4)).unwrap();
         let struct_logs = block.geth_trace.struct_logs;
 
         assert_eq!(struct_logs[1].error, Some(GETH_ERR_OUT_OF_GAS.to_string()));
@@ -2474,9 +2359,7 @@ mod tracer_tests {
             PUSH3(0xbb)
         };
         code_b.append(&code_b_end);
-        let block =
-            mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b)
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b).unwrap();
 
         // get RETURN
         let (index_return, _) = block
@@ -2486,8 +2369,7 @@ mod tracer_tests {
             .enumerate()
             .find(|(_, s)| s.op == OpcodeId::RETURN)
             .unwrap();
-        let next_step_return =
-            block.geth_trace.struct_logs.get(index_return + 1);
+        let next_step_return = block.geth_trace.struct_logs.get(index_return + 1);
         let addr_expect = next_step_return.unwrap().stack.last().unwrap();
 
         // get CREATE2
@@ -2499,12 +2381,9 @@ mod tracer_tests {
             .unwrap();
         let mut builder = CircuitInputBuilderTx::new(&block, step_create2);
         // Set up call context at CREATE2
-        builder.state_ref().push_call(
-            CallKind::Create,
-            *ADDR_B,
-            CodeSource::Memory,
-            Hash::zero(),
-        );
+        builder
+            .state_ref()
+            .push_call(CallKind::Create, *ADDR_B, CodeSource::Memory, Hash::zero());
         let addr = builder.state_ref().create2_address(step_create2).unwrap();
 
         assert_eq!(addr.to_word(), addr_expect);
@@ -2565,9 +2444,7 @@ mod tracer_tests {
             PUSH3(0xbb)
         };
         code_b.append(&code_b_end);
-        let block =
-            mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b)
-                .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b).unwrap();
 
         // get last RETURN
         let (index_return, _) = block
@@ -2578,8 +2455,7 @@ mod tracer_tests {
             .rev()
             .find(|(_, s)| s.op == OpcodeId::RETURN)
             .unwrap();
-        let next_step_return =
-            block.geth_trace.struct_logs.get(index_return + 1);
+        let next_step_return = block.geth_trace.struct_logs.get(index_return + 1);
         let addr_expect = next_step_return.unwrap().stack.last().unwrap();
 
         // get last CREATE
@@ -2592,12 +2468,9 @@ mod tracer_tests {
             .unwrap();
         let mut builder = CircuitInputBuilderTx::new(&block, step_create);
         // Set up call context at CREATE
-        builder.state_ref().push_call(
-            CallKind::Create,
-            *ADDR_B,
-            CodeSource::Memory,
-            Hash::zero(),
-        );
+        builder
+            .state_ref()
+            .push_call(CallKind::Create, *ADDR_B, CodeSource::Memory, Hash::zero());
         builder.builder.sdb.set_account(
             &ADDR_B,
             Account {
@@ -2643,15 +2516,9 @@ mod tracer_tests {
 
             PUSH3(0xbb)
         };
-        let block =
-            mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b)
-                .unwrap();
-        let access_trace = gen_state_access_trace(
-            &block.eth_block,
-            &block.eth_tx,
-            &block.geth_trace,
-        )
-        .unwrap();
+        let block = mock::BlockData::new_single_tx_trace_code_2(&code_a, &code_b).unwrap();
+        let access_trace =
+            gen_state_access_trace(&block.eth_block, &block.eth_tx, &block.geth_trace).unwrap();
 
         assert_eq!(
             access_trace,
@@ -2712,10 +2579,7 @@ mod tracer_tests {
                 state: HashMap::from_iter([
                     (ADDR_0, HashSet::new()),
                     (*ADDR_A, HashSet::new()),
-                    (
-                        *ADDR_B,
-                        HashSet::from_iter([Word::from(2), Word::from(3)])
-                    )
+                    (*ADDR_B, HashSet::from_iter([Word::from(2), Word::from(3)]))
                 ]),
                 code: HashSet::from_iter([*ADDR_A, *ADDR_B]),
             }
