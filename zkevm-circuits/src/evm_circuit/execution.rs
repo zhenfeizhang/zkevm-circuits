@@ -72,8 +72,8 @@ pub(crate) trait ExecutionGadget<F: FieldExt> {
         region: &mut Region<'_, F>,
         offset: usize,
         block: &Block<F>,
-        transaction: &Transaction<F>,
-        call: &Call<F>,
+        transaction: &Transaction,
+        call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error>;
 }
@@ -456,11 +456,18 @@ impl<F: FieldExt> ExecutionConfig<F> {
         region: &mut Region<'_, F>,
         offset: usize,
         block: &Block<F>,
-        transaction: &Transaction<F>,
-        call: &Call<F>,
+        transaction: &Transaction,
+        call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
-        self.step.assign_exec_step(region, offset, call, step)?;
+        self.step.assign_exec_step(
+            region,
+            offset,
+            block,
+            transaction,
+            call,
+            step,
+        )?;
 
         for (cell, value) in self
             .presets_map

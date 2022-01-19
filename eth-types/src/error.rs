@@ -27,8 +27,6 @@ pub enum Error {
     /// Error when an EvmWord is too big to be converted into a
     /// `MemoryAddress`.
     WordToMemAddr,
-    /// Error while generating a trace.
-    TracingError,
     /// JSON-RPC related error.
     JSONRpcError(ProviderError),
     /// OpcodeId is not a call type.
@@ -37,10 +35,15 @@ pub enum Error {
     AccountNotFound(Address),
     /// Storage key not found in the StateDB
     StorageKeyNotFound(Address, Word),
+    /// Error while generating a trace.
+    TracingError(String),
+    /// Invalid [`crate::eth_types::GethExecTrace`] due to an unexpected form
+    /// of it.
+    InvalidGethExecTrace(&'static str),
     /// Unable to figure out error at a [`GethExecStep`]
-    UnexpectedExecStepError(&'static str, Box<GethExecStep>),
+    UnexpectedExecStepError(&'static str, GethExecStep),
     /// Invalid [`GethExecStep`] due to an invalid/unexpected value in it.
-    InvalidGethExecStep(&'static str, Box<GethExecStep>),
+    InvalidGethExecStep(&'static str, GethExecStep),
 }
 
 impl From<ProviderError> for Error {

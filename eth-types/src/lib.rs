@@ -24,8 +24,8 @@ use crate::evm_types::{memory::Memory, stack::Stack, storage::Storage};
 use crate::evm_types::{Gas, GasCost, OpcodeId, ProgramCounter};
 use ethers_core::types;
 pub use ethers_core::types::{
-    transaction::response::Transaction, Address, Block, Bytes, H160, H256,
-    U256, U64,
+    transaction::{eip2930::AccessList, response::Transaction},
+    Address, Block, Bytes, H160, H256, U256, U64,
 };
 use pairing::arithmetic::FieldExt;
 use serde::{de, Deserialize};
@@ -146,6 +146,12 @@ impl ToAddress for U256 {
 /// Ethereum Hash (256 bits).
 pub type Hash = types::H256;
 
+impl ToWord for Hash {
+    fn to_word(&self) -> Word {
+        Word::from(self.as_bytes())
+    }
+}
+
 impl ToWord for Address {
     fn to_word(&self) -> Word {
         let mut bytes = [0u8; 32];
@@ -164,7 +170,7 @@ impl<F: FieldExt> ToScalar<F> for Address {
 }
 
 /// Chain specific constants
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct ChainConstants {
     /// Chain ID
     pub chain_id: u64,

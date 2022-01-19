@@ -114,7 +114,7 @@ pub(crate) mod test {
         evm_circuit::{
             param::STEP_HEIGHT,
             table::FixedTableTag,
-            witness::{Block, BlockContext, Bytecode, Rw, Transaction},
+            witness::{Block, BlockContext, Bytecode, RwMap, Transaction},
             EvmCircuit,
         },
         util::Expr,
@@ -170,7 +170,7 @@ pub(crate) mod test {
         fn load_txs(
             &self,
             layouter: &mut impl Layouter<F>,
-            txs: &[Transaction<F>],
+            txs: &[Transaction],
             randomness: F,
         ) -> Result<(), Error> {
             layouter.assign_region(
@@ -209,7 +209,7 @@ pub(crate) mod test {
         fn load_rws(
             &self,
             layouter: &mut impl Layouter<F>,
-            rws: &[Rw],
+            rws: &RwMap,
             randomness: F,
         ) -> Result<(), Error> {
             layouter.assign_region(
@@ -226,7 +226,7 @@ pub(crate) mod test {
                     }
                     offset += 1;
 
-                    for rw in rws.iter() {
+                    for rw in rws.0.values().flat_map(|rws| rws.iter()) {
                         for (column, value) in self
                             .rw_table
                             .iter()
@@ -286,10 +286,10 @@ pub(crate) mod test {
             )
         }
 
-        fn load_blocks(
+        fn load_block(
             &self,
             layouter: &mut impl Layouter<F>,
-            block: &BlockContext<F>,
+            block: &BlockContext,
             randomness: F,
         ) -> Result<(), Error> {
             layouter.assign_region(
@@ -412,7 +412,7 @@ pub(crate) mod test {
                 &self.block.bytecodes,
                 self.block.randomness,
             )?;
-            config.load_blocks(
+            config.load_block(
                 &mut layouter,
                 &self.block.context,
                 self.block.randomness,

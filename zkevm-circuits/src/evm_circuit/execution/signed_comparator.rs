@@ -154,8 +154,8 @@ impl<F: FieldExt> ExecutionGadget<F> for SignedComparatorGadget<F> {
         region: &mut Region<'_, F>,
         offset: usize,
         block: &Block<F>,
-        _transaction: &Transaction<F>,
-        _call: &Call<F>,
+        _transaction: &Transaction,
+        _call: &Call,
         step: &ExecStep,
     ) -> Result<(), Error> {
         self.same_context.assign_exec_step(region, offset, step)?;

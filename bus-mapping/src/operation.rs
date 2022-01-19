@@ -106,6 +106,8 @@ pub enum Target {
     Account,
     /// Means the target of the operation is the AccountDestructed.
     AccountDestructed,
+    /// Means the target of the operation is the CallContext.
+    CallContext,
 }
 
 /// Trait used for Operation Kinds.
@@ -134,8 +136,8 @@ impl fmt::Debug for MemoryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("MemoryOp { ")?;
         f.write_fmt(format_args!(
-            "{:?}, addr: {:?}, value: 0x{:02x}",
-            self.rw, self.address, self.value
+            "{:?}, call_id: {:?}, addr: {:?}, value: 0x{:02x}",
+            self.rw, self.call_id, self.address, self.value
         ))?;
         f.write_str(" }")
     }
@@ -166,6 +168,11 @@ impl MemoryOp {
     /// Returns the [`Target`] (operation type) of this operation.
     pub const fn target(&self) -> Target {
         Target::Memory
+    }
+
+    /// Returns the call id associated to this Operation.
+    pub const fn call_id(&self) -> usize {
+        self.call_id
     }
 
     /// Returns the [`MemoryAddress`] associated to this Operation.
@@ -216,8 +223,8 @@ impl fmt::Debug for StackOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("StackOp { ")?;
         f.write_fmt(format_args!(
-            "{:?}, addr: {:?}, val: 0x{:x}",
-            self.rw, self.address, self.value
+            "{:?}, call_id: {:?}, addr: {:?}, val: 0x{:x}",
+            self.rw, self.call_id, self.address, self.value
         ))?;
         f.write_str(" }")
     }
@@ -248,6 +255,11 @@ impl StackOp {
     /// Returns the [`Target`] (operation type) of this operation.
     pub const fn target(&self) -> Target {
         Target::Stack
+    }
+
+    /// Returns the call id associated to this Operation.
+    pub const fn call_id(&self) -> usize {
+        self.call_id
     }
 
     /// Returns the [`StackAddress`] associated to this Operation.
@@ -614,8 +626,103 @@ impl Op for AccountDestructedOp {
     }
 }
 
-// TODO: https://github.com/appliedzkp/zkevm-circuits/issues/225
-// pub struct CallContextOp{}
+/// Represents a field parameter of the CallContext that can be accessed via EVM
+/// execution.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CallContextField {
+    /// RwCounterEndOfReversion
+    RwCounterEndOfReversion,
+    /// CallerId
+    CallerId,
+    /// TxId
+    TxId,
+    /// Depth
+    Depth,
+    /// CallerAddress
+    CallerAddress,
+    /// CalleeAddress
+    CalleeAddress,
+    /// CallDataOffset
+    CallDataOffset,
+    /// CallDataLength
+    CallDataLength,
+    /// ReturnDataOffset
+    ReturnDataOffset,
+    /// ReturnDataLength
+    ReturnDataLength,
+    /// Value
+    Value,
+    /// IsSuccess
+    IsSuccess,
+    /// IsPersistent
+    IsPersistent,
+    /// IsStatic
+    IsStatic,
+    /// LastCalleeId
+    LastCalleeId,
+    /// LastCalleeReturnDataOffset
+    LastCalleeReturnDataOffset,
+    /// LastCalleeReturnDataLength
+    LastCalleeReturnDataLength,
+    /// IsRoot
+    IsRoot,
+    /// IsCreate
+    IsCreate,
+    /// CodeSource
+    CodeSource,
+    /// ProgramCounter
+    ProgramCounter,
+    /// StackPointer
+    StackPointer,
+    /// GasLeft
+    GasLeft,
+    /// MemorySize
+    MemorySize,
+    /// StateWriteCounter
+    StateWriteCounter,
+}
+
+/// Represents an CallContext read/write operation.
+#[derive(Clone, PartialEq, Eq)]
+pub struct CallContextOp {
+    /// RW
+    pub rw: RW,
+    /// call_id of CallContext
+    pub call_id: usize,
+    /// field of CallContext
+    pub field: CallContextField,
+    /// value of CallContext
+    pub value: Word,
+}
+
+impl fmt::Debug for CallContextOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("CallContextOp { ")?;
+        f.write_fmt(format_args!(
+            "{:?}, call_id: {:?}, field: {:?}, value: {:?}",
+            self.rw, self.call_id, self.field, self.value,
+        ))?;
+        f.write_str(" }")
+    }
+}
+
+impl PartialOrd for CallContextOp {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for CallContextOp {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (&self.call_id, &self.field).cmp(&(&other.call_id, &other.field))
+    }
+}
+
+impl Op for CallContextOp {
+    fn into_enum(self) -> OpEnum {
+        OpEnum::CallContext(self)
+    }
+}
 
 /// Generic enum that wraps over all the operation types possible.
 /// In particular [`StackOp`], [`MemoryOp`] and [`StorageOp`].
@@ -637,8 +744,8 @@ pub enum OpEnum {
     Account(AccountOp),
     /// AccountDestructed
     AccountDestructed(AccountDestructedOp),
-    /* TODO: https://github.com/appliedzkp/zkevm-circuits/issues/225
-     * CallContext(CallContextOp), */
+    /// CallContext
+    CallContext(CallContextOp),
 }
 
 /// Operation is a Wrapper over a type that implements Op with a RWCounter.
@@ -691,6 +798,11 @@ impl<T: Op> Operation<T> {
     /// Return this `Operation` `op`
     pub fn op(&self) -> &T {
         &self.op
+    }
+
+    /// Return this `Operation` `op` as mutable reference
+    pub fn op_mut(&mut self) -> &mut T {
+        &mut self.op
     }
 
     // /// Matches over an `Operation` returning the [`Target`] of the iternal

@@ -1,4 +1,11 @@
 //! Definition of each opcode of the EVM.
+use crate::circuit_input_builder::CircuitInputStateRef;
+use crate::evm::OpcodeId;
+use crate::Error;
+use core::fmt::Debug;
+use eth_types::GethExecStep;
+use log::warn;
+
 mod coinbase;
 mod dup;
 mod jump;
@@ -15,14 +22,6 @@ mod stackonlyop;
 mod stop;
 mod swap;
 
-use crate::circuit_input_builder::CircuitInputStateRef;
-use crate::evm::OpcodeId;
-use crate::Error;
-use core::fmt::Debug;
-use eth_types::GethExecStep;
-use log::warn;
-
-use self::push::Push;
 use coinbase::Coinbase;
 use dup::Dup;
 use jump::Jump;
@@ -33,6 +32,7 @@ use msize::Msize;
 use mstore::Mstore;
 use pc::Pc;
 use pop::Pop;
+use push::Push;
 use sload::Sload;
 use stackonlyop::StackOnlyOpcode;
 use stop::Stop;

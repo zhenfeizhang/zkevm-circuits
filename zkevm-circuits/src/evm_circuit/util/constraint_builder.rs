@@ -41,12 +41,23 @@ pub(crate) struct StepStateTransition<F: FieldExt> {
     pub(crate) call_id: Transition<Expression<F>>,
     pub(crate) is_root: Transition<Expression<F>>,
     pub(crate) is_create: Transition<Expression<F>>,
-    pub(crate) opcode_source: Transition<Expression<F>>,
+    pub(crate) code_source: Transition<Expression<F>>,
     pub(crate) program_counter: Transition<Expression<F>>,
     pub(crate) stack_pointer: Transition<Expression<F>>,
     pub(crate) gas_left: Transition<Expression<F>>,
     pub(crate) memory_word_size: Transition<Expression<F>>,
     pub(crate) state_write_counter: Transition<Expression<F>>,
+}
+
+impl<F: FieldExt> StepStateTransition<F> {
+    pub(crate) fn new_context() -> Self {
+        Self {
+            program_counter: Transition::To(0.expr()),
+            stack_pointer: Transition::To(1024.expr()),
+            memory_word_size: Transition::To(0.expr()),
+            ..Self::default()
+        }
+    }
 }
 
 pub(crate) struct ConstraintBuilder<'a, F> {
@@ -307,10 +318,10 @@ impl<'a, F: FieldExt> ConstraintBuilder<'a, F> {
                 step_state_transition.is_create,
             ),
             (
-                "State transition constrain of opcode_source",
-                &self.curr.state.opcode_source,
-                &self.next.state.opcode_source,
-                step_state_transition.opcode_source,
+                "State transition constrain of code_source",
+                &self.curr.state.code_source,
+                &self.next.state.code_source,
+                step_state_transition.code_source,
             ),
             (
                 "State transition constrain of program_counter",
@@ -405,7 +416,7 @@ impl<'a, F: FieldExt> ConstraintBuilder<'a, F> {
         self.add_lookup(
             "Opcode lookup",
             Lookup::Bytecode {
-                hash: self.curr.state.opcode_source.expr(),
+                hash: self.curr.state.code_source.expr(),
                 index,
                 value: opcode,
                 is_code,
@@ -530,7 +541,7 @@ impl<'a, F: FieldExt> ConstraintBuilder<'a, F> {
             // Swap value and value_prev respect to tag
             match tag {
                 RwTableTag::TxAccessListAccount => values.swap(2, 3),
-                RwTableTag::TxAccessListStorageSlot => values.swap(3, 4),
+                RwTableTag::TxAccessListAccountStorage => values.swap(3, 4),
                 RwTableTag::Account => values.swap(2, 3),
                 RwTableTag::AccountStorage => values.swap(3, 4),
                 RwTableTag::AccountDestructed => values.swap(2, 3),
@@ -557,13 +568,21 @@ impl<'a, F: FieldExt> ConstraintBuilder<'a, F> {
         account_address: Expression<F>,
         value: Expression<F>,
         value_prev: Expression<F>,
-    ) {
+    ) -> Expression<F> {
         self.rw_lookup(
-            "AccountAccessList write",
+            "TxAccessListAccount write",
             true.expr(),
             RwTableTag::TxAccessListAccount,
-            [tx_id, account_address, value, value_prev, 0.expr()],
+            [
+                tx_id,
+                account_address,
+                value.clone(),
+                value_prev.clone(),
+                0.expr(),
+            ],
         );
+
+        value - value_prev
     }
 
     // Account
@@ -641,19 +660,20 @@ impl<'a, F: FieldExt> ConstraintBuilder<'a, F> {
         field_tag: CallContextFieldTag,
     ) -> Cell<F> {
         let cell = self.query_cell();
-        self.call_context_lookup(call_id, field_tag, cell.expr());
+        self.call_context_lookup(false.expr(), call_id, field_tag, cell.expr());
         cell
     }
 
     pub(crate) fn call_context_lookup(
         &mut self,
+        is_write: Expression<F>,
         call_id: Option<Expression<F>>,
         field_tag: CallContextFieldTag,
         value: Expression<F>,
     ) {
         self.rw_lookup(
             "CallContext lookup",
-            false.expr(),
+            is_write,
             RwTableTag::CallContext,
             [
                 call_id.unwrap_or_else(|| self.curr.state.call_id.expr()),

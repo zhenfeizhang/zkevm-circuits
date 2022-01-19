@@ -1,7 +1,7 @@
 use super::{
-    AccountDestructedOp, AccountOp, MemoryOp, Op, OpEnum, Operation, StackOp,
-    StorageOp, Target, TxAccessListAccountOp, TxAccessListAccountStorageOp,
-    TxRefundOp,
+    AccountDestructedOp, AccountOp, CallContextOp, MemoryOp, Op, OpEnum,
+    Operation, StackOp, StorageOp, Target, TxAccessListAccountOp,
+    TxAccessListAccountStorageOp, TxRefundOp,
 };
 use crate::exec_trace::OperationRef;
 use itertools::Itertools;
@@ -22,17 +22,25 @@ use itertools::Itertools;
 /// order to construct the State proof.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperationContainer {
-    pub(crate) memory: Vec<Operation<MemoryOp>>,
-    pub(crate) stack: Vec<Operation<StackOp>>,
-    pub(crate) storage: Vec<Operation<StorageOp>>,
-    pub(crate) tx_access_list_account: Vec<Operation<TxAccessListAccountOp>>,
-    pub(crate) tx_access_list_storage_slot:
+    /// Operations of MemoryOp
+    pub memory: Vec<Operation<MemoryOp>>,
+    /// Operations of StackOp
+    pub stack: Vec<Operation<StackOp>>,
+    /// Operations of StorageOp
+    pub storage: Vec<Operation<StorageOp>>,
+    /// Operations of TxAccessListAccountOp
+    pub tx_access_list_account: Vec<Operation<TxAccessListAccountOp>>,
+    /// Operations of TxAccessListAccountStorageOp
+    pub tx_access_list_account_storage:
         Vec<Operation<TxAccessListAccountStorageOp>>,
-    pub(crate) tx_refund: Vec<Operation<TxRefundOp>>,
-    pub(crate) account: Vec<Operation<AccountOp>>,
-    pub(crate) account_destructed: Vec<Operation<AccountDestructedOp>>,
-    /* TODO
-     * pub(crate) call_context: Vec<Operation<CallContextOp>>, */
+    /// Operations of TxRefundOp
+    pub tx_refund: Vec<Operation<TxRefundOp>>,
+    /// Operations of AccountOp
+    pub account: Vec<Operation<AccountOp>>,
+    /// Operations of AccountDestructedOp
+    pub account_destructed: Vec<Operation<AccountDestructedOp>>,
+    /// Operations of CallContextOp
+    pub call_context: Vec<Operation<CallContextOp>>,
 }
 
 impl Default for OperationContainer {
@@ -50,10 +58,11 @@ impl OperationContainer {
             stack: Vec::new(),
             storage: Vec::new(),
             tx_access_list_account: Vec::new(),
-            tx_access_list_storage_slot: Vec::new(),
+            tx_access_list_account_storage: Vec::new(),
             tx_refund: Vec::new(),
             account: Vec::new(),
             account_destructed: Vec::new(),
+            call_context: Vec::new(),
         }
     }
 
@@ -66,44 +75,51 @@ impl OperationContainer {
         match op.op.into_enum() {
             OpEnum::Memory(op) => {
                 self.memory.push(Operation::new(rwc, op));
-                OperationRef::from((Target::Memory, self.memory.len()))
+                OperationRef::from((Target::Memory, self.memory.len() - 1))
             }
             OpEnum::Stack(op) => {
                 self.stack.push(Operation::new(rwc, op));
-                OperationRef::from((Target::Stack, self.stack.len()))
+                OperationRef::from((Target::Stack, self.stack.len() - 1))
             }
             OpEnum::Storage(op) => {
                 self.storage.push(Operation::new(rwc, op));
-                OperationRef::from((Target::Storage, self.storage.len()))
+                OperationRef::from((Target::Storage, self.storage.len() - 1))
             }
             OpEnum::TxAccessListAccount(op) => {
                 self.tx_access_list_account.push(Operation::new(rwc, op));
                 OperationRef::from((
                     Target::TxAccessListAccount,
-                    self.tx_access_list_account.len(),
+                    self.tx_access_list_account.len() - 1,
                 ))
             }
             OpEnum::TxAccessListAccountStorage(op) => {
-                self.tx_access_list_storage_slot
+                self.tx_access_list_account_storage
                     .push(Operation::new(rwc, op));
                 OperationRef::from((
                     Target::TxAccessListAccountStorage,
-                    self.tx_access_list_storage_slot.len(),
+                    self.tx_access_list_account_storage.len() - 1,
                 ))
             }
             OpEnum::TxRefund(op) => {
                 self.tx_refund.push(Operation::new(rwc, op));
-                OperationRef::from((Target::TxRefund, self.tx_refund.len()))
+                OperationRef::from((Target::TxRefund, self.tx_refund.len() - 1))
             }
             OpEnum::Account(op) => {
                 self.account.push(Operation::new(rwc, op));
-                OperationRef::from((Target::Account, self.account.len()))
+                OperationRef::from((Target::Account, self.account.len() - 1))
             }
             OpEnum::AccountDestructed(op) => {
                 self.account_destructed.push(Operation::new(rwc, op));
                 OperationRef::from((
                     Target::AccountDestructed,
-                    self.account_destructed.len(),
+                    self.account_destructed.len() - 1,
+                ))
+            }
+            OpEnum::CallContext(op) => {
+                self.call_context.push(Operation::new(rwc, op));
+                OperationRef::from((
+                    Target::CallContext,
+                    self.call_context.len() - 1,
                 ))
             }
         }
@@ -165,8 +181,8 @@ mod container_test {
         assert_eq!(operation_container.sorted_stack()[0], stack_operation);
         assert_eq!(operation_container.sorted_memory()[0], memory_operation);
         assert_eq!(operation_container.sorted_storage()[0], storage_operation);
-        assert_eq!(stack_ref, OperationRef::from((Target::Stack, 1)));
-        assert_eq!(memory_ref, OperationRef::from((Target::Memory, 1)));
-        assert_eq!(storage_ref, OperationRef::from((Target::Storage, 1)));
+        assert_eq!(stack_ref, OperationRef::from((Target::Stack, 0)));
+        assert_eq!(memory_ref, OperationRef::from((Target::Memory, 0)));
+        assert_eq!(storage_ref, OperationRef::from((Target::Storage, 0)));
     }
 }

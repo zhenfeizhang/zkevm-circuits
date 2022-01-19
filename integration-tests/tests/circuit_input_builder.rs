@@ -30,7 +30,13 @@ async fn test_circuit_input_builder_block(block_num: u64) {
     // 5. For each step in TxExecTraces, gen the associated ops and state
     // circuit inputs
     let builder = cli
-        .gen_inputs_from_state(state_db, code_db, &eth_block, &geth_trace)
+        .gen_inputs_from_state(
+            state_db,
+            code_db,
+            &eth_block,
+            Default::default(),
+            &geth_trace,
+        )
         .unwrap();
 
     trace!("CircuitInputBuilder: {:#?}", builder);

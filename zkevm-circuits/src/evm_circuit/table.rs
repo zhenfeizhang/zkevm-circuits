@@ -133,17 +133,17 @@ pub enum TxContextFieldTag {
 pub enum BlockContextFieldTag {
     Coinbase = 1,
     GasLimit,
-    BlockNumber,
-    Time,
+    Number,
+    Timestamp,
     Difficulty,
     BaseFee,
     BlockHash,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RwTableTag {
     TxAccessListAccount = 1,
-    TxAccessListStorageSlot,
+    TxAccessListAccountStorage,
     TxRefund,
     Account,
     AccountStorage,
@@ -160,10 +160,10 @@ pub enum AccountFieldTag {
     CodeHash,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CallContextFieldTag {
     RwCounterEndOfReversion = 1,
-    CallerCallId,
+    CallerId,
     TxId,
     Depth,
     CallerAddress,
@@ -173,13 +173,17 @@ pub enum CallContextFieldTag {
     ReturnDataOffset,
     ReturnDataLength,
     Value,
-    Result,
+    IsSuccess,
     IsPersistent,
     IsStatic,
 
+    LastCalleeId,
+    LastCalleeReturnDataOffset,
+    LastCalleeReturnDataLength,
+
     IsRoot,
     IsCreate,
-    OpcodeSource,
+    CodeSource,
     ProgramCounter,
     StackPointer,
     GasLeft,
