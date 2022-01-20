@@ -658,12 +658,6 @@ pub enum CallContextField {
     IsPersistent,
     /// IsStatic
     IsStatic,
-    /// LastCalleeId
-    LastCalleeId,
-    /// LastCalleeReturnDataOffset
-    LastCalleeReturnDataOffset,
-    /// LastCalleeReturnDataLength
-    LastCalleeReturnDataLength,
     /// IsRoot
     IsRoot,
     /// IsCreate

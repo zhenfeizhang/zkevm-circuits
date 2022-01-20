@@ -13,9 +13,13 @@ use halo2::{arithmetic::FieldExt, plonk::Expression};
 use std::convert::TryInto;
 
 // Max degree allowed in all expressions passing through the ConstraintBuilder.
-const MAX_DEGREE: usize = 2usize.pow(3) + 1;
-// Degree added for expressions used in lookups.
-const LOOKUP_DEGREE: usize = 3;
+// It aims to cap `extended_k` to 3, which allows constraint degree to 2^3+1,
+// but each ExecutionGadget has implicit selector degree 2, so here it only
+// allows 2^3+1-2 = 7.
+const MAX_DEGREE: usize = 7;
+// Implicit degree added to input expressions of lookups. It assumes blind
+// factors have been disabled, and table expressions with degree 1.
+const LOOKUP_DEGREE: usize = 2;
 
 #[derive(Clone, Debug, Default)]
 struct StepRowUsage {
@@ -182,6 +186,12 @@ impl<'a, F: FieldExt> ConstraintBuilder<'a, F> {
     }
 
     // Query
+
+    pub(crate) fn copy<E: Expr<F>>(&mut self, value: E) -> Cell<F> {
+        let cell = self.query_cell();
+        self.require_equal("Copy value to new cell", cell.expr(), value.expr());
+        cell
+    }
 
     pub(crate) fn query_bool(&mut self) -> Cell<F> {
         let [cell] = self.query_cells::<1>(false);
@@ -825,7 +835,8 @@ impl<'a, F: FieldExt> ConstraintBuilder<'a, F> {
             Some(condition) => condition.clone() * constraint,
             None => constraint,
         };
-        self.validate_degree(constraint.degree(), name);
+        // Add 1 more degree due to the selector
+        self.validate_degree(constraint.degree() + 1, name);
         self.constraints_first_step.push((name, constraint));
     }
 

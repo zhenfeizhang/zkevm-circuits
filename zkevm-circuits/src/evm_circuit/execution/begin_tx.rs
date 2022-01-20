@@ -163,9 +163,6 @@ impl<F: FieldExt> ExecutionGadget<F> for BeginTxGadget<F> {
             ),
             (CallContextFieldTag::Value, tx_value.expr()),
             (CallContextFieldTag::IsStatic, 0.expr()),
-            (CallContextFieldTag::LastCalleeId, 0.expr()),
-            (CallContextFieldTag::LastCalleeReturnDataOffset, 0.expr()),
-            (CallContextFieldTag::LastCalleeReturnDataLength, 0.expr()),
         ] {
             cb.call_context_lookup(
                 false.expr(),
@@ -193,7 +190,7 @@ impl<F: FieldExt> ExecutionGadget<F> for BeginTxGadget<F> {
             //   - Read CallContext CallDataLength
             //   - Read CallContext Value
             //   - Read CallContext IsStatic
-            rw_counter: Delta(19.expr()),
+            rw_counter: Delta(16.expr()),
             call_id: To(call_id.expr()),
             is_root: To(true.expr()),
             is_create: To(false.expr()),
@@ -385,29 +382,32 @@ mod test {
                 }],
                 steps: vec![
                     ExecStep {
-                        rw_indices: vec![
-                            (RwTableTag::CallContext, 0),
-                            (RwTableTag::CallContext, 1),
-                            (RwTableTag::CallContext, 2),
-                            (RwTableTag::Account, 0),
-                            (RwTableTag::TxAccessListAccount, 0),
-                            (RwTableTag::TxAccessListAccount, 1),
-                            (RwTableTag::Account, 1),
-                            (RwTableTag::Account, 2),
-                            (RwTableTag::Account, 3),
-                            (RwTableTag::CallContext, 3),
-                            (RwTableTag::CallContext, 4),
-                            (RwTableTag::CallContext, 5),
-                            (RwTableTag::CallContext, 6),
-                            (RwTableTag::CallContext, 7),
-                            (RwTableTag::CallContext, 8),
-                            (RwTableTag::CallContext, 9),
-                            (RwTableTag::CallContext, 10),
-                            (RwTableTag::CallContext, 11),
-                            (RwTableTag::CallContext, 12),
-                            (RwTableTag::Account, 4),
-                            (RwTableTag::Account, 5),
-                        ],
+                        rw_indices: [
+                            vec![
+                                (RwTableTag::CallContext, 0),
+                                (RwTableTag::CallContext, 1),
+                                (RwTableTag::CallContext, 2),
+                                (RwTableTag::Account, 0),
+                                (RwTableTag::TxAccessListAccount, 0),
+                                (RwTableTag::TxAccessListAccount, 1),
+                                (RwTableTag::Account, 1),
+                                (RwTableTag::Account, 2),
+                                (RwTableTag::Account, 3),
+                                (RwTableTag::CallContext, 3),
+                                (RwTableTag::CallContext, 4),
+                                (RwTableTag::CallContext, 5),
+                                (RwTableTag::CallContext, 6),
+                                (RwTableTag::CallContext, 7),
+                                (RwTableTag::CallContext, 8),
+                                (RwTableTag::CallContext, 9),
+                            ],
+                            if is_success {
+                                vec![]
+                            } else {
+                                vec![(RwTableTag::Account, 4), (RwTableTag::Account, 5)]
+                            },
+                        ]
+                        .concat(),
                         execution_state: ExecutionState::BeginTx,
                         rw_counter: 1,
                         gas_cost: intrinsic_gas_cost,
@@ -415,7 +415,7 @@ mod test {
                     },
                     ExecStep {
                         execution_state: ExecutionState::STOP,
-                        rw_counter: 20,
+                        rw_counter: 17,
                         program_counter: 0,
                         stack_pointer: STACK_CAPACITY,
                         gas_left: 0,
@@ -588,29 +588,6 @@ mod test {
                                 is_write: false,
                                 call_id: 1,
                                 field_tag: CallContextFieldTag::IsStatic,
-                                value: Word::zero(),
-                            },
-                            Rw::CallContext {
-                                rw_counter: 17,
-                                is_write: false,
-                                call_id: 1,
-                                field_tag: CallContextFieldTag::LastCalleeId,
-                                value: Word::zero(),
-                            },
-                            Rw::CallContext {
-                                rw_counter: 18,
-                                is_write: false,
-                                call_id: 1,
-                                field_tag:
-                                    CallContextFieldTag::LastCalleeReturnDataOffset,
-                                value: Word::zero(),
-                            },
-                            Rw::CallContext {
-                                rw_counter: 19,
-                                is_write: false,
-                                call_id: 1,
-                                field_tag:
-                                    CallContextFieldTag::LastCalleeReturnDataLength,
                                 value: Word::zero(),
                             },
                         ],
