@@ -9,8 +9,10 @@ use crate::evm_circuit::{
     util::RandomLinearCombination,
 };
 use bus_mapping::{
-    circuit_input_builder,
+    circuit_input_builder::{self, CircuitInputBuilder},
+    external_tracer,
     operation::{self, AccountField, CallContextField},
+    state_db,
 };
 use eth_types::{
     evm_types::OpcodeId, Address, ToLittleEndian, ToScalar, ToWord, Word,
@@ -893,7 +895,10 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
             OpcodeId::EQ | OpcodeId::LT | OpcodeId::GT => ExecutionState::CMP,
             OpcodeId::SLT | OpcodeId::SGT => ExecutionState::SCMP,
             OpcodeId::SIGNEXTEND => ExecutionState::SIGNEXTEND,
-            OpcodeId::STOP => ExecutionState::STOP,
+            // TODO: Convert REVERT and RETURN to their own ExecutionState.
+            OpcodeId::STOP | OpcodeId::REVERT | OpcodeId::RETURN => {
+                ExecutionState::STOP
+            }
             OpcodeId::AND => ExecutionState::BITWISE,
             OpcodeId::XOR => ExecutionState::BITWISE,
             OpcodeId::OR => ExecutionState::BITWISE,
@@ -909,6 +914,7 @@ impl From<&circuit_input_builder::ExecStep> for ExecutionState {
             OpcodeId::PC => ExecutionState::PC,
             OpcodeId::MSIZE => ExecutionState::MSIZE,
             OpcodeId::COINBASE => ExecutionState::COINBASE,
+            OpcodeId::CALL => ExecutionState::CALL,
             _ => unimplemented!("unimplemented opcode {:?}", step.op),
         }
     }
@@ -1029,4 +1035,51 @@ pub fn block_convert(
             })
             .collect(),
     }
+}
+
+// TODO: Move into test_util
+pub fn build_block(
+    accounts: &[external_tracer::Account],
+    eth_tx: eth_types::Transaction,
+) -> Block<Fp> {
+    let geth_trace = external_tracer::trace(&external_tracer::TraceConfig {
+        accounts: accounts
+            .iter()
+            .map(|account| (account.address, account.clone()))
+            .collect(),
+        transaction: external_tracer::Transaction::from_eth_tx(&eth_tx),
+        ..Default::default()
+    })
+    .unwrap();
+
+    let mut sdb = state_db::StateDB::new();
+    let mut code_db = state_db::CodeDB::new();
+    sdb.set_account(&eth_tx.from, state_db::Account::zero());
+    for account in accounts {
+        let code_hash = code_db.insert(account.code.to_vec());
+        sdb.set_account(
+            &account.address,
+            state_db::Account {
+                balance: account.balance,
+                code_hash,
+                ..state_db::Account::zero()
+            },
+        );
+    }
+
+    let block = circuit_input_builder::Block::new::<()>(
+        0.into(),
+        // TODO: Add mocking history_hashes when nedded.
+        Vec::new(),
+        &eth_types::Block {
+            number: Some(0.into()),
+            base_fee_per_gas: Some(0.into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let mut builder = CircuitInputBuilder::new(sdb, code_db, block);
+    builder.handle_tx(&eth_tx, &geth_trace).unwrap();
+
+    block_convert(&builder.block, &builder.code_db)
 }

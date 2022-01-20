@@ -20,6 +20,7 @@ mod add;
 mod begin_tx;
 mod bitwise;
 mod byte;
+mod call;
 mod coinbase;
 mod comparator;
 mod dup;
@@ -42,6 +43,7 @@ use add::AddGadget;
 use begin_tx::BeginTxGadget;
 use bitwise::BitwiseGadget;
 use byte::ByteGadget;
+use call::CallGadget;
 use coinbase::CoinbaseGadget;
 use comparator::ComparatorGadget;
 use dup::DupGadget;
@@ -85,10 +87,11 @@ pub(crate) struct ExecutionConfig<F> {
     step: Step<F>,
     presets_map: HashMap<ExecutionState, Vec<Preset<F>>>,
     add_gadget: AddGadget<F>,
-    mul_gadget: MulGadget<F>,
-    bitwise_gadget: BitwiseGadget<F>,
     begin_tx_gadget: BeginTxGadget<F>,
+    bitwise_gadget: BitwiseGadget<F>,
     byte_gadget: ByteGadget<F>,
+    call_gadget: CallGadget<F>,
+    coinbase_gadget: CoinbaseGadget<F>,
     comparator_gadget: ComparatorGadget<F>,
     dup_gadget: DupGadget<F>,
     error_oog_pure_memory_gadget: ErrorOOGPureMemoryGadget<F>,
@@ -96,6 +99,8 @@ pub(crate) struct ExecutionConfig<F> {
     jumpdest_gadget: JumpdestGadget<F>,
     jumpi_gadget: JumpiGadget<F>,
     memory_gadget: MemoryGadget<F>,
+    msize_gadget: MsizeGadget<F>,
+    mul_gadget: MulGadget<F>,
     pc_gadget: PcGadget<F>,
     pop_gadget: PopGadget<F>,
     push_gadget: PushGadget<F>,
@@ -103,8 +108,6 @@ pub(crate) struct ExecutionConfig<F> {
     signextend_gadget: SignextendGadget<F>,
     stop_gadget: StopGadget<F>,
     swap_gadget: SwapGadget<F>,
-    msize_gadget: MsizeGadget<F>,
-    coinbase_gadget: CoinbaseGadget<F>,
 }
 
 impl<F: FieldExt> ExecutionConfig<F> {
@@ -214,10 +217,11 @@ impl<F: FieldExt> ExecutionConfig<F> {
             q_step,
             q_step_first,
             add_gadget: configure_gadget!(),
-            mul_gadget: configure_gadget!(),
-            bitwise_gadget: configure_gadget!(),
             begin_tx_gadget: configure_gadget!(),
+            bitwise_gadget: configure_gadget!(),
             byte_gadget: configure_gadget!(),
+            call_gadget: configure_gadget!(),
+            coinbase_gadget: configure_gadget!(),
             comparator_gadget: configure_gadget!(),
             dup_gadget: configure_gadget!(),
             error_oog_pure_memory_gadget: configure_gadget!(),
@@ -225,6 +229,8 @@ impl<F: FieldExt> ExecutionConfig<F> {
             jumpdest_gadget: configure_gadget!(),
             jumpi_gadget: configure_gadget!(),
             memory_gadget: configure_gadget!(),
+            msize_gadget: configure_gadget!(),
+            mul_gadget: configure_gadget!(),
             pc_gadget: configure_gadget!(),
             pop_gadget: configure_gadget!(),
             push_gadget: configure_gadget!(),
@@ -232,8 +238,6 @@ impl<F: FieldExt> ExecutionConfig<F> {
             signextend_gadget: configure_gadget!(),
             stop_gadget: configure_gadget!(),
             swap_gadget: configure_gadget!(),
-            msize_gadget: configure_gadget!(),
-            coinbase_gadget: configure_gadget!(),
             step: step_curr,
             presets_map,
         };
@@ -517,6 +521,7 @@ impl<F: FieldExt> ExecutionConfig<F> {
             ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
             ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
             ExecutionState::COINBASE => assign_exec_step!(self.coinbase_gadget),
+            ExecutionState::CALL => assign_exec_step!(self.call_gadget),
             ExecutionState::ErrorOutOfGasPureMemory => {
                 assign_exec_step!(self.error_oog_pure_memory_gadget)
             }

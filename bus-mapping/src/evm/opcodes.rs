@@ -6,6 +6,7 @@ use core::fmt::Debug;
 use eth_types::GethExecStep;
 use log::warn;
 
+mod call;
 mod coinbase;
 mod dup;
 mod jump;
@@ -22,6 +23,7 @@ mod stackonlyop;
 mod stop;
 mod swap;
 
+use call::Call;
 use coinbase::Coinbase;
 use dup::Dup;
 use jump::Jump;
@@ -201,7 +203,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         // OpcodeId::LOG3 => {},
         // OpcodeId::LOG4 => {},
         // OpcodeId::CREATE => {},
-        // OpcodeId::CALL => {},
+        OpcodeId::CALL => Call::gen_associated_ops,
         // OpcodeId::CALLCODE => {},
         // OpcodeId::RETURN => {},
         // OpcodeId::DELEGATECALL => {},

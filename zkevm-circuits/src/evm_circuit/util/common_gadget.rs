@@ -106,6 +106,10 @@ impl<F: FieldExt> SameContextGadget<F> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct TransferWithGasFeeGadget<F> {
+    sender_balance: Word<F>,
+    sender_balance_prev: Word<F>,
+    receiver_balance: Word<F>,
+    receiver_balance_prev: Word<F>,
     sub_sender_balance: AddWordsGadget<F, 3>,
     add_receiver_balance: AddWordsGadget<F, 2>,
 }
@@ -162,6 +166,10 @@ impl<F: FieldExt> TransferWithGasFeeGadget<F> {
         }
 
         Self {
+            sender_balance,
+            sender_balance_prev: sender_balance_prev.clone(),
+            receiver_balance: receiver_balance.clone(),
+            receiver_balance_prev,
             sub_sender_balance,
             add_receiver_balance,
         }
@@ -180,6 +188,104 @@ impl<F: FieldExt> TransferWithGasFeeGadget<F> {
             region,
             offset,
             [sender_balance, value, gas_fee],
+            sender_balance_prev,
+        )?;
+        self.add_receiver_balance.assign(
+            region,
+            offset,
+            [receiver_balance_prev, value],
+            receiver_balance,
+        )?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct TransferGadget<F> {
+    sender_balance: Word<F>,
+    sender_balance_prev: Word<F>,
+    receiver_balance: Word<F>,
+    receiver_balance_prev: Word<F>,
+    sub_sender_balance: AddWordsGadget<F, 2>,
+    add_receiver_balance: AddWordsGadget<F, 2>,
+}
+
+impl<F: FieldExt> TransferGadget<F> {
+    pub(crate) fn construct(
+        cb: &mut ConstraintBuilder<F>,
+        sender_address: Expression<F>,
+        receiver_address: Expression<F>,
+        value: Word<F>,
+        is_persistent: Expression<F>,
+        rw_counter_end_of_reversion: Expression<F>,
+    ) -> Self {
+        let sender_balance = cb.query_word();
+        let receiver_balance_prev = cb.query_word();
+
+        // Subtract sender balance by value
+        let sub_sender_balance = AddWordsGadget::construct(
+            cb,
+            [sender_balance.clone(), value.clone()],
+        );
+        cb.require_zero(
+            "Sender has sufficient balance",
+            sub_sender_balance.carry().expr(),
+        );
+
+        // Add receiver balance by value
+        let add_receiver_balance = AddWordsGadget::construct(
+            cb,
+            [receiver_balance_prev.clone(), value],
+        );
+        cb.require_zero(
+            "Receiver has too much balance",
+            add_receiver_balance.carry().expr(),
+        );
+
+        let sender_balance_prev = sub_sender_balance.sum();
+        let receiver_balance = add_receiver_balance.sum();
+
+        // Write with possible reversion
+        for (address, balance, balance_prev) in [
+            (sender_address, &sender_balance, sender_balance_prev),
+            (receiver_address, receiver_balance, &receiver_balance_prev),
+        ] {
+            cb.account_write_with_reversion(
+                address,
+                AccountFieldTag::Balance,
+                balance.expr(),
+                balance_prev.expr(),
+                is_persistent.clone(),
+                rw_counter_end_of_reversion.clone(),
+            );
+        }
+
+        Self {
+            sender_balance,
+            sender_balance_prev: sender_balance_prev.clone(),
+            receiver_balance: receiver_balance.clone(),
+            receiver_balance_prev,
+            sub_sender_balance,
+            add_receiver_balance,
+        }
+    }
+
+    pub(crate) fn receiver_balance_prev(&self) -> &Word<F> {
+        &self.receiver_balance_prev
+    }
+
+    pub(crate) fn assign(
+        &self,
+        region: &mut Region<'_, F>,
+        offset: usize,
+        (sender_balance, sender_balance_prev): (U256, U256),
+        (receiver_balance, receiver_balance_prev): (U256, U256),
+        value: U256,
+    ) -> Result<(), Error> {
+        self.sub_sender_balance.assign(
+            region,
+            offset,
+            [sender_balance, value],
             sender_balance_prev,
         )?;
         self.add_receiver_balance.assign(

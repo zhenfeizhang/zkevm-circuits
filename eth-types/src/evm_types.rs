@@ -1,12 +1,14 @@
 //! Evm types needed for parsing instruction sets as well
 
+use crate::Word;
+use serde::{Deserialize, Serialize};
+use std::fmt;
+
 pub mod memory;
 pub mod opcode_ids;
 pub mod stack;
 pub mod storage;
 
-use serde::{Deserialize, Serialize};
-use std::fmt;
 pub use {
     memory::{Memory, MemoryAddress},
     opcode_ids::OpcodeId,
@@ -63,6 +65,9 @@ impl fmt::Debug for Gas {
         f.write_fmt(format_args!("{}", self.0))
     }
 }
+
+/// Gas stipend when CALL or CALLCODE is attached with value.
+pub const GAS_STIPEND_CALL_WITH_VALUE: u64 = 2300;
 
 /// Defines the gas consumption.
 #[derive(
@@ -143,4 +148,35 @@ impl From<u64> for GasCost {
     fn from(cost: u64) -> Self {
         GasCost(cost)
     }
+}
+
+/// Calculate memory expansion gas cost by current and next memory word
+/// size.
+pub fn memory_expansion_gas_cost(
+    curr_memory_word_size: u64,
+    next_memory_word_size: u64,
+) -> u64 {
+    if next_memory_word_size == curr_memory_word_size {
+        0
+    } else {
+        GasCost::MEMORY_EXPANSION_LINEAR_COEFF.0
+            * (next_memory_word_size - curr_memory_word_size)
+            + (next_memory_word_size * next_memory_word_size
+                - curr_memory_word_size * curr_memory_word_size)
+                / GasCost::MEMORY_EXPANSION_QUAD_DENOMINATOR.0
+    }
+}
+
+/// Calculate EIP 150 gas passed to callee.
+pub fn eip150_gas(gas_left: u64, gas_specified: Word) -> u64 {
+    let capped_gas = gas_left - gas_left / 64;
+
+    if gas_specified.bits() <= 64 {
+        let gas_specified = gas_specified.low_u64();
+        if gas_specified < capped_gas {
+            return gas_specified;
+        }
+    }
+
+    capped_gas
 }

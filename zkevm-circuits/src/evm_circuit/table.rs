@@ -25,8 +25,10 @@ impl<F: FieldExt, const W: usize> LookupTable<F, W> for [Column<Fixed>; W] {
 pub enum FixedTableTag {
     Range16 = 1,
     Range32,
+    Range64,
     Range256,
     Range512,
+    Range1024,
     SignByte,
     BitwiseAnd,
     BitwiseOr,
@@ -39,8 +41,10 @@ impl FixedTableTag {
         [
             Self::Range16,
             Self::Range32,
+            Self::Range64,
             Self::Range256,
             Self::Range512,
+            Self::Range1024,
             Self::SignByte,
             Self::BitwiseAnd,
             Self::BitwiseOr,
@@ -64,6 +68,11 @@ impl FixedTableTag {
                     [tag, F::from(value), F::zero(), F::zero()]
                 }))
             }
+            Self::Range64 => {
+                Box::new((0..64).map(move |value| {
+                    [tag, F::from(value), F::zero(), F::zero()]
+                }))
+            }
             Self::Range256 => {
                 Box::new((0..256).map(move |value| {
                     [tag, F::from(value), F::zero(), F::zero()]
@@ -71,6 +80,11 @@ impl FixedTableTag {
             }
             Self::Range512 => {
                 Box::new((0..512).map(move |value| {
+                    [tag, F::from(value), F::zero(), F::zero()]
+                }))
+            }
+            Self::Range1024 => {
+                Box::new((0..1024).map(move |value| {
                     [tag, F::from(value), F::zero(), F::zero()]
                 }))
             }

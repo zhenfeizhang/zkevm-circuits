@@ -469,8 +469,10 @@ pub(crate) mod test {
             vec![
                 FixedTableTag::Range16,
                 FixedTableTag::Range32,
+                FixedTableTag::Range64,
                 FixedTableTag::Range256,
                 FixedTableTag::Range512,
+                FixedTableTag::Range1024,
                 FixedTableTag::SignByte,
                 FixedTableTag::ResponsibleOpcode,
             ],

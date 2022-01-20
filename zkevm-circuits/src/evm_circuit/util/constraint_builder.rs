@@ -382,8 +382,10 @@ impl<'a, F: FieldExt> ConstraintBuilder<'a, F> {
         let (name, tag) = match range {
             16 => ("Range16", FixedTableTag::Range16),
             32 => ("Range32", FixedTableTag::Range32),
+            64 => ("Range64", FixedTableTag::Range64),
             256 => ("Range256", FixedTableTag::Range256),
             512 => ("Range512", FixedTableTag::Range512),
+            1024 => ("Range1024", FixedTableTag::Range1024),
             _ => unimplemented!(),
         };
         self.add_lookup(
@@ -595,6 +597,32 @@ impl<'a, F: FieldExt> ConstraintBuilder<'a, F> {
         value - value_prev
     }
 
+    pub(crate) fn account_access_list_write_with_reversion(
+        &mut self,
+        tx_id: Expression<F>,
+        account_address: Expression<F>,
+        value: Expression<F>,
+        value_prev: Expression<F>,
+        is_persistent: Expression<F>,
+        rw_counter_end_of_reversion: Expression<F>,
+    ) -> Expression<F> {
+        self.state_write_with_reversion(
+            "TxAccessListAccount write with reversion",
+            RwTableTag::TxAccessListAccount,
+            [
+                tx_id,
+                account_address,
+                value.clone(),
+                value_prev.clone(),
+                0.expr(),
+            ],
+            is_persistent,
+            rw_counter_end_of_reversion,
+        );
+
+        value - value_prev
+    }
+
     // Account
 
     pub(crate) fn account_read(
@@ -788,6 +816,10 @@ impl<'a, F: FieldExt> ConstraintBuilder<'a, F> {
     }
 
     // General
+
+    pub fn reset_state_write_counter_offset(&mut self) {
+        self.state_write_counter_offset = 0;
+    }
 
     pub(crate) fn condition<R>(
         &mut self,

@@ -1,7 +1,7 @@
 // Step dimension
 pub(crate) const STEP_WIDTH: usize = 32;
 /// Step height
-pub const STEP_HEIGHT: usize = 14;
+pub const STEP_HEIGHT: usize = 16;
 pub(crate) const N_CELLS_STEP_STATE: usize = 10;
 
 /// Maximum number of bytes that an integer can fit in field without wrapping
@@ -32,3 +32,10 @@ pub(crate) const STACK_CAPACITY: usize = 1024;
 // counter to u64 as go-ethereum in case transaction size is allowed larger in
 // the future.
 pub(crate) const N_BYTES_PROGRAM_COUNTER: usize = N_BYTES_U64;
+
+// Hash output in little-endian of keccak256 with empty input.
+pub(crate) const EMPTY_HASH: [u8; 32] = [
+    0x70, 0xa4, 0x85, 0x5d, 0x04, 0xd8, 0xfa, 0x7b, 0x3b, 0x27, 0x82, 0xca,
+    0x53, 0xb6, 0x00, 0xe5, 0xc0, 0x03, 0xc7, 0xdc, 0xb2, 0x7d, 0x7e, 0x92,
+    0x3c, 0x23, 0xf7, 0x86, 0x01, 0x46, 0xd2, 0xc5,
+];
