@@ -799,6 +799,15 @@ impl From<&operation::OperationContainer> for RwMap {
                         CallContextField::IsStatic => {
                             CallContextFieldTag::IsStatic
                         }
+                        CallContextField::LastCalleeId => {
+                            CallContextFieldTag::LastCalleeId
+                        }
+                        CallContextField::LastCalleeReturnDataOffset => {
+                            CallContextFieldTag::LastCalleeReturnDataOffset
+                        }
+                        CallContextField::LastCalleeReturnDataLength => {
+                            CallContextFieldTag::LastCalleeReturnDataLength
+                        }
                         CallContextField::IsRoot => CallContextFieldTag::IsRoot,
                         CallContextField::IsCreate => {
                             CallContextFieldTag::IsCreate

@@ -163,6 +163,9 @@ impl<F: FieldExt> ExecutionGadget<F> for BeginTxGadget<F> {
             ),
             (CallContextFieldTag::Value, tx_value.expr()),
             (CallContextFieldTag::IsStatic, 0.expr()),
+            (CallContextFieldTag::LastCalleeId, 0.expr()),
+            (CallContextFieldTag::LastCalleeReturnDataOffset, 0.expr()),
+            (CallContextFieldTag::LastCalleeReturnDataLength, 0.expr()),
         ] {
             cb.call_context_lookup(
                 false.expr(),
@@ -173,7 +176,7 @@ impl<F: FieldExt> ExecutionGadget<F> for BeginTxGadget<F> {
         }
 
         cb.require_step_state_transition(StepStateTransition {
-            // 16 read/write including:
+            // 19 read/write including:
             //   - Read CallContext TxId
             //   - Read CallContext RwCounterEndOfReversion
             //   - Read CallContext IsPersistent
@@ -190,7 +193,10 @@ impl<F: FieldExt> ExecutionGadget<F> for BeginTxGadget<F> {
             //   - Read CallContext CallDataLength
             //   - Read CallContext Value
             //   - Read CallContext IsStatic
-            rw_counter: Delta(16.expr()),
+            //   - Read CallContext LastCalleeId
+            //   - Read CallContext LastCalleeReturnDataOffset
+            //   - Read CallContext LastCalleeReturnDataLength
+            rw_counter: Delta(19.expr()),
             call_id: To(call_id.expr()),
             is_root: To(true.expr()),
             is_create: To(false.expr()),
@@ -415,7 +421,7 @@ mod test {
                     },
                     ExecStep {
                         execution_state: ExecutionState::STOP,
-                        rw_counter: 17,
+                        rw_counter: 20,
                         program_counter: 0,
                         stack_pointer: STACK_CAPACITY,
                         gas_left: 0,
@@ -588,6 +594,29 @@ mod test {
                                 is_write: false,
                                 call_id: 1,
                                 field_tag: CallContextFieldTag::IsStatic,
+                                value: Word::zero(),
+                            },
+                            Rw::CallContext {
+                                rw_counter: 17,
+                                is_write: false,
+                                call_id: 1,
+                                field_tag: CallContextFieldTag::LastCalleeId,
+                                value: Word::zero(),
+                            },
+                            Rw::CallContext {
+                                rw_counter: 18,
+                                is_write: false,
+                                call_id: 1,
+                                field_tag:
+                                    CallContextFieldTag::LastCalleeReturnDataOffset,
+                                value: Word::zero(),
+                            },
+                            Rw::CallContext {
+                                rw_counter: 19,
+                                is_write: false,
+                                call_id: 1,
+                                field_tag:
+                                    CallContextFieldTag::LastCalleeReturnDataLength,
                                 value: Word::zero(),
                             },
                         ],
