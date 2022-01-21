@@ -80,14 +80,12 @@ func FormatLogs(logs []logger.StructLog) []StructLogRes {
 }
 
 type Block struct {
-	ChainID       *hexutil.Big   `json:"chain_id"`
-	Coinbase      common.Address `json:"coinbase"`
-	Timestamp     *hexutil.Big   `json:"timestamp"`
-	Number        *hexutil.Big   `json:"number"`
-	Difficulty    *hexutil.Big   `json:"difficulty"`
-	GasLimit      *hexutil.Big   `json:"gas_limit"`
-	BaseFee       *hexutil.Big   `json:"base_fee"`
-	HistoryHashes []*hexutil.Big `json:"history_hashes"`
+	Coinbase   common.Address `json:"coinbase"`
+	Timestamp  *hexutil.Big   `json:"timestamp"`
+	Number     *hexutil.Big   `json:"number"`
+	Difficulty *hexutil.Big   `json:"difficulty"`
+	GasLimit   *hexutil.Big   `json:"gas_limit"`
+	BaseFee    *hexutil.Big   `json:"base_fee"`
 }
 
 type Account struct {
@@ -113,9 +111,19 @@ type Transaction struct {
 	} `json:"access_list"`
 }
 
-func TraceTx(block Block, accounts map[common.Address]Account, tx Transaction) (*ExecutionResult, error) {
+type TraceConfig struct {
+	ChainID *hexutil.Big `json:"chain_id"`
+	// HistoryHashes contains most recent 256 block hashes in history,
+	// where the lastest one is at HistoryHashes[len(HistoryHashes)-1].
+	HistoryHashes []*hexutil.Big             `json:"history_hashes"`
+	Block         Block                      `json:"block_constants"`
+	Accounts      map[common.Address]Account `json:"accounts"`
+	Transaction   Transaction                `json:"transaction"`
+}
+
+func TraceTx(config TraceConfig) (*ExecutionResult, error) {
 	chainConfig := params.ChainConfig{
-		ChainID:             toBigInt(block.ChainID),
+		ChainID:             toBigInt(config.ChainID),
 		HomesteadBlock:      big.NewInt(0),
 		DAOForkBlock:        big.NewInt(0),
 		DAOForkSupport:      true,
@@ -133,45 +141,45 @@ func TraceTx(block Block, accounts map[common.Address]Account, tx Transaction) (
 	}
 
 	// If gas price is specified directly, the tx is treated as legacy one
-	if tx.GasPrice != nil {
-		block.BaseFee = new(hexutil.Big)
-		tx.GasFeeCap = tx.GasPrice
-		tx.GasTipCap = tx.GasPrice
+	if config.Transaction.GasPrice != nil {
+		config.Block.BaseFee = new(hexutil.Big)
+		config.Transaction.GasFeeCap = config.Transaction.GasPrice
+		config.Transaction.GasTipCap = config.Transaction.GasPrice
 	}
 
 	blockCtx := vm.BlockContext{
 		CanTransfer: core.CanTransfer,
 		Transfer:    core.Transfer,
 		GetHash: func(n uint64) common.Hash {
-			number := block.Number.ToInt().Uint64()
+			number := config.Block.Number.ToInt().Uint64()
 			if number > n && number-n <= 256 {
-				return common.BigToHash(toBigInt(block.HistoryHashes[256-number+n]))
+				return common.BigToHash(toBigInt(config.HistoryHashes[256-number+n]))
 			}
 			return common.Hash{}
 		},
-		Coinbase:    block.Coinbase,
-		BlockNumber: toBigInt(block.Number),
-		Time:        toBigInt(block.Timestamp),
-		Difficulty:  toBigInt(block.Difficulty),
-		BaseFee:     toBigInt(block.BaseFee),
-		GasLimit:    toBigInt(block.GasLimit).Uint64(),
+		Coinbase:    config.Block.Coinbase,
+		BlockNumber: toBigInt(config.Block.Number),
+		Time:        toBigInt(config.Block.Timestamp),
+		Difficulty:  toBigInt(config.Block.Difficulty),
+		BaseFee:     toBigInt(config.Block.BaseFee),
+		GasLimit:    toBigInt(config.Block.GasLimit).Uint64(),
 	}
 
-	txAccessList := make(types.AccessList, len(tx.AccessList))
-	for i, accessList := range tx.AccessList {
+	txAccessList := make(types.AccessList, len(config.Transaction.AccessList))
+	for i, accessList := range config.Transaction.AccessList {
 		txAccessList[i].Address = accessList.Address
 		txAccessList[i].StorageKeys = accessList.StorageKeys
 	}
 	message := types.NewMessage(
-		tx.From,
-		tx.To,
-		uint64(tx.Nonce),
-		toBigInt(tx.Value),
-		uint64(tx.GasLimit),
-		toBigInt(tx.GasPrice),
-		toBigInt(tx.GasFeeCap),
-		toBigInt(tx.GasTipCap),
-		tx.CallData,
+		config.Transaction.From,
+		config.Transaction.To,
+		uint64(config.Transaction.Nonce),
+		toBigInt(config.Transaction.Value),
+		uint64(config.Transaction.GasLimit),
+		toBigInt(config.Transaction.GasPrice),
+		toBigInt(config.Transaction.GasFeeCap),
+		toBigInt(config.Transaction.GasTipCap),
+		config.Transaction.CallData,
 		txAccessList,
 		false,
 	)
@@ -179,7 +187,7 @@ func TraceTx(block Block, accounts map[common.Address]Account, tx Transaction) (
 
 	// Setup state db with accounts from argument
 	stateDB, _ := state.New(common.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
-	for address, account := range accounts {
+	for address, account := range config.Accounts {
 		stateDB.SetNonce(address, uint64(account.Nonce))
 		stateDB.SetCode(address, account.Code)
 		if account.Balance != nil {

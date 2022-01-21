@@ -17,7 +17,7 @@ func main() {
 	accounts := map[common.Address]gethutil.Account{address: {Code: assembly.Bytecode()}}
 	tx := gethutil.Transaction{To: &address, GasLimit: 46000}
 
-	result, err := gethutil.TraceTx(gethutil.Block{}, accounts, tx)
+	result, err := gethutil.TraceTx(gethutil.TraceConfig{Accounts: accounts, Transaction: tx})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to trace tx, err: %v\n", err)
 	}

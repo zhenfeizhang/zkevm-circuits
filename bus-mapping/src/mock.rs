@@ -1,14 +1,12 @@
 //! Mock types and functions to generate mock data useful for tests
 use crate::bytecode::Bytecode;
-use crate::circuit_input_builder::CircuitInputBuilder;
-use crate::external_tracer;
+use crate::circuit_input_builder::{Block, CircuitInputBuilder};
 use crate::external_tracer::BlockConstants;
+use crate::external_tracer::{self, TraceConfig};
 use crate::state_db::{self, CodeDB, StateDB};
 use crate::Error;
 use eth_types::evm_types::Gas;
-use eth_types::{
-    self, address, Address, Bytes, ChainConstants, Hash, Word, U64,
-};
+use eth_types::{self, address, Address, Bytes, Hash, Word, U64};
 use lazy_static::lazy_static;
 
 /// Mock chain ID
@@ -18,11 +16,6 @@ lazy_static! {
     /// Mock coinbase value
     pub static ref COINBASE: Address =
         address!("0x00000000000000000000000000000000c014ba5e");
-}
-
-/// Generate a new mock chain constants, useful for tests.
-pub fn new_chain_constants() -> eth_types::ChainConstants {
-    ChainConstants { chain_id: CHAIN_ID }
 }
 
 /// Generate a new mock block with preloaded data, useful for tests.
@@ -86,14 +79,15 @@ pub struct BlockData {
     pub sdb: StateDB,
     /// CodeDB
     pub code_db: CodeDB,
+    /// chain id
+    pub chain_id: Word,
+    /// history hashes contains most recent 256 block hashes in history, where
+    /// the lastest one is at history_hashes[history_hashes.len() - 1].
+    pub history_hashes: Vec<Word>,
     /// Block from geth
     pub eth_block: eth_types::Block<()>,
     /// Transaction from geth
     pub eth_tx: eth_types::Transaction,
-    /// Constants
-    pub c_constant: ChainConstants,
-    /// Constants
-    pub b_constant: BlockConstants,
     /// Execution Trace from geth
     pub geth_trace: eth_types::GethExecTrace,
 }
@@ -111,15 +105,20 @@ impl BlockData {
         let eth_block = new_block();
         let mut eth_tx = new_tx(&eth_block);
         eth_tx.gas = Word::from(gas.0);
-        let c_constant = new_chain_constants();
-        let b_constant = BlockConstants::from_eth_block(
-            &eth_block,
-            &Word::from(c_constant.chain_id),
-            Default::default(),
-        );
-        let tracer_tx = external_tracer::Transaction::from_eth_tx(&eth_tx);
-        let geth_trace =
-            external_tracer::trace(&b_constant, &tracer_tx, accounts)?;
+
+        let trace_config = TraceConfig {
+            chain_id: CHAIN_ID.into(),
+            // TODO: Add mocking history_hashes when nedded.
+            history_hashes: Vec::new(),
+            block_constants: BlockConstants::try_from(&eth_block)?,
+            accounts: accounts
+                .iter()
+                .map(|account| (account.address, account.clone()))
+                .collect(),
+            transaction: external_tracer::Transaction::from_eth_tx(&eth_tx),
+        };
+        let geth_trace = external_tracer::trace(&trace_config)?;
+
         let mut sdb = StateDB::new();
         let mut code_db = CodeDB::new();
         sdb.set_account(&eth_tx.from, state_db::Account::zero());
@@ -138,10 +137,10 @@ impl BlockData {
         Ok(Self {
             sdb,
             code_db,
+            chain_id: trace_config.chain_id,
+            history_hashes: trace_config.history_hashes,
             eth_block,
             eth_tx,
-            c_constant,
-            b_constant,
             geth_trace,
         })
     }
@@ -210,15 +209,9 @@ impl BlockData {
     /// CodeDB.
     pub fn new_single_tx_geth_steps(
         geth_steps: Vec<eth_types::GethExecStep>,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         let eth_block = new_block();
         let eth_tx = new_tx(&eth_block);
-        let c_constant = new_chain_constants();
-        let b_constant = BlockConstants::from_eth_block(
-            &eth_block,
-            &Word::from(c_constant.chain_id),
-            Default::default(),
-        );
         let geth_trace = eth_types::GethExecTrace {
             gas: Gas(eth_tx.gas.as_u64()),
             failed: false,
@@ -226,15 +219,16 @@ impl BlockData {
         };
         let sdb = StateDB::new();
         let code_db = CodeDB::new();
-        Self {
+        Ok(Self {
             sdb,
             code_db,
+            chain_id: CHAIN_ID.into(),
+            // TODO: Add mocking history_hashes when nedded.
+            history_hashes: Vec::new(),
             eth_block,
             eth_tx,
-            c_constant,
-            b_constant,
             geth_trace,
-        }
+        })
     }
 
     /// Generate a new CircuitInputBuilder initialized with the context of the
@@ -243,8 +237,12 @@ impl BlockData {
         CircuitInputBuilder::new(
             self.sdb.clone(),
             self.code_db.clone(),
-            self.c_constant.clone(),
-            self.b_constant.clone(),
+            Block::new(
+                self.chain_id,
+                self.history_hashes.clone(),
+                &self.eth_block,
+            )
+            .unwrap(),
         )
     }
 }

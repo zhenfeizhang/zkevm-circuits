@@ -9,27 +9,19 @@ import (
 	"fmt"
 	"main/gethutil"
 	"unsafe"
-
-	"github.com/ethereum/go-ethereum/common"
 )
-
-type Config struct {
-	Block       gethutil.Block                      `json:"block_constants"`
-	Accounts    map[common.Address]gethutil.Account `json:"accounts"`
-	Transaction gethutil.Transaction                `json:"transaction"`
-}
 
 // TODO: Add proper error handling.  For example, return an int, where 0 means
 // ok, and !=0 means error.
 //export CreateTrace
 func CreateTrace(configStr *C.char) *C.char {
-	var config Config
+	var config gethutil.TraceConfig
 	err := json.Unmarshal([]byte(C.GoString(configStr)), &config)
 	if err != nil {
 		return C.CString(fmt.Sprintf("Failed to unmarshal config, err: %v", err))
 	}
 
-	executionResult, err := gethutil.TraceTx(config.Block, config.Accounts, config.Transaction)
+	executionResult, err := gethutil.TraceTx(config)
 	if err != nil {
 		return C.CString(fmt.Sprintf("Failed to trace tx, err: %v", err))
 	}

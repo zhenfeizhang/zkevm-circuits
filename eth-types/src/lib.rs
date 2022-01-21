@@ -169,13 +169,6 @@ impl<F: FieldExt> ToScalar<F> for Address {
     }
 }
 
-/// Chain specific constants
-#[derive(Debug, Default, Clone)]
-pub struct ChainConstants {
-    /// Chain ID
-    pub chain_id: u64,
-}
-
 /// Struct used to define the storage proof
 #[derive(Debug, Default, Clone, PartialEq, Deserialize)]
 pub struct StorageProof {

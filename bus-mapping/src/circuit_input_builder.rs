@@ -2,7 +2,6 @@
 //! types from geth / web3 and outputs the circuit inputs.
 use crate::evm::opcodes::gen_associated_ops;
 use crate::exec_trace::OperationRef;
-use crate::external_tracer::BlockConstants;
 use crate::geth_errors::*;
 use crate::operation::container::OperationContainer;
 use crate::operation::{
@@ -16,8 +15,8 @@ use eth_types::evm_types::{
     Gas, GasCost, MemoryAddress, OpcodeId, ProgramCounter, StackAddress,
 };
 use eth_types::{
-    self, Address, ChainConstants, GethExecStep, GethExecTrace, Hash,
-    ToAddress, ToBigEndian, Word,
+    self, Address, GethExecStep, GethExecTrace, Hash, ToAddress, ToBigEndian,
+    Word,
 };
 use ethers_core::utils::{get_contract_address, get_create2_address};
 use std::{
@@ -182,10 +181,23 @@ impl BlockContext {
 /// Circuit Input related to a block.
 #[derive(Debug)]
 pub struct Block {
-    /// Constants associated to the chain.
-    pub chain_const: ChainConstants,
-    /// Constants associated to the block.
-    pub block_const: BlockConstants,
+    /// chain id
+    pub chain_id: Word,
+    /// history hashes contains most recent 256 block hashes in history, where
+    /// the lastest one is at history_hashes[history_hashes.len() - 1].
+    pub history_hashes: Vec<Word>,
+    /// coinbase
+    pub coinbase: Address,
+    /// time
+    pub gas_limit: u64,
+    /// number
+    pub number: Word,
+    /// difficulty
+    pub timestamp: Word,
+    /// gas limit
+    pub difficulty: Word,
+    /// base fee
+    pub base_fee: Word,
     /// Container of operations done in this block.
     pub container: OperationContainer,
     txs: Vec<Transaction>,
@@ -194,17 +206,30 @@ pub struct Block {
 
 impl Block {
     /// Create a new block.
-    pub fn new(
-        chain_const: ChainConstants,
-        block_const: BlockConstants,
-    ) -> Self {
-        Self {
-            chain_const,
-            block_const,
+    pub fn new<TX>(
+        chain_id: Word,
+        history_hashes: Vec<Word>,
+        eth_block: &eth_types::Block<TX>,
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            chain_id,
+            history_hashes,
+            coinbase: eth_block.author,
+            gas_limit: eth_block.gas_limit.low_u64(),
+            number: eth_block
+                .number
+                .ok_or(Error::IncompleteBlock)?
+                .low_u64()
+                .into(),
+            timestamp: eth_block.timestamp,
+            difficulty: eth_block.difficulty,
+            base_fee: eth_block
+                .base_fee_per_gas
+                .ok_or(Error::IncompleteBlock)?,
             container: OperationContainer::new(),
             txs: Vec::new(),
             code: HashMap::new(),
-        }
+        })
     }
 
     /// Return the list of transactions of this block.
@@ -1077,16 +1102,11 @@ pub struct CircuitInputBuilder {
 impl<'a> CircuitInputBuilder {
     /// Create a new CircuitInputBuilder from the given `eth_block` and
     /// `constants`.
-    pub fn new(
-        sdb: StateDB,
-        code_db: CodeDB,
-        chain_const: ChainConstants,
-        block_const: BlockConstants,
-    ) -> Self {
+    pub fn new(sdb: StateDB, code_db: CodeDB, block: Block) -> Self {
         Self {
             sdb,
             code_db,
-            block: Block::new(chain_const, block_const),
+            block,
             block_ctx: BlockContext::new(),
         }
     }
@@ -1153,7 +1173,7 @@ impl<'a> CircuitInputBuilder {
                     call_is_success
                         .insert(call_indices.pop().unwrap(), is_success);
                 // When callee doesn't have code for execution, the depth won't
-                // chagne, so we need to catch such cases here.
+                // change, so we need to catch such cases here.
                 } else if matches!(
                     geth_step.op,
                     OpcodeId::CREATE
@@ -1517,18 +1537,20 @@ type EthBlock = eth_types::Block<eth_types::Transaction>;
 /// the necessary information and using the CircuitInputBuilder.
 pub struct BuilderClient<P: JsonRpcClient> {
     cli: GethClient<P>,
-    constants: ChainConstants,
+    chain_id: Word,
+    history_hashes: Vec<Word>,
 }
 
 impl<P: JsonRpcClient> BuilderClient<P> {
     /// Create a new BuilderClient
     pub async fn new(client: GethClient<P>) -> Result<Self, Error> {
-        let constants = ChainConstants {
-            chain_id: client.get_chain_id().await?,
-        };
+        let chain_id = client.get_chain_id().await?;
+
         Ok(Self {
             cli: client,
-            constants,
+            chain_id: chain_id.into(),
+            // TODO: Get history hashes
+            history_hashes: Vec::new(),
         })
     }
 
@@ -1633,19 +1655,11 @@ impl<P: JsonRpcClient> BuilderClient<P> {
         sdb: StateDB,
         code_db: CodeDB,
         eth_block: &EthBlock,
-        history_hashes: Vec<Word>,
         geth_traces: &[eth_types::GethExecTrace],
     ) -> Result<CircuitInputBuilder, Error> {
-        let mut builder = CircuitInputBuilder::new(
-            sdb,
-            code_db,
-            self.constants.clone(),
-            BlockConstants::from_eth_block(
-                eth_block,
-                &Word::from(self.constants.chain_id),
-                history_hashes,
-            ),
-        );
+        let block =
+            Block::new(self.chain_id, self.history_hashes.clone(), eth_block)?;
+        let mut builder = CircuitInputBuilder::new(sdb, code_db, block);
         for (tx_index, tx) in eth_block.transactions.iter().enumerate() {
             let geth_trace = &geth_traces[tx_index];
             builder.handle_tx(tx, geth_trace)?;
@@ -1666,7 +1680,6 @@ impl<P: JsonRpcClient> BuilderClient<P> {
             state_db,
             code_db,
             &eth_block,
-            Default::default(),
             &geth_traces,
         )?;
         Ok(builder)

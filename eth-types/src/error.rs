@@ -37,6 +37,8 @@ pub enum Error {
     StorageKeyNotFound(Address, Word),
     /// Error while generating a trace.
     TracingError(String),
+    /// Block is missing information about number or base_fee
+    IncompleteBlock,
     /// Invalid [`crate::eth_types::GethExecTrace`] due to an unexpected form
     /// of it.
     InvalidGethExecTrace(&'static str),

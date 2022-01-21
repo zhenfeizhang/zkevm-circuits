@@ -52,10 +52,10 @@
 //! use bus_mapping::mock;
 //! use bus_mapping::state_db::{self, StateDB, CodeDB};
 //! use eth_types::{
-//!     self, Address, Word, Hash, U64, GethExecTrace, GethExecStep, ChainConstants
+//!     self, Address, Word, Hash, U64, GethExecTrace, GethExecStep
 //! };
 //! use eth_types::evm_types::Gas;
-//! use bus_mapping::circuit_input_builder::CircuitInputBuilder;
+//! use bus_mapping::circuit_input_builder::{Block, CircuitInputBuilder};
 //! use bus_mapping::external_tracer::BlockConstants;
 //! use pairing::arithmetic::FieldExt;
 //!
@@ -107,10 +107,6 @@
 //! ]
 //! "#;
 //!
-//! let ctants = ChainConstants{
-//!     chain_id: 0,
-//! };
-//!
 //! // We use some mock data as context for the trace
 //! let eth_block = mock::new_block();
 //! let eth_tx = mock::new_tx(&eth_block);
@@ -121,12 +117,7 @@
 //! let mut builder = CircuitInputBuilder::new(
 //!     sdb,
 //!     CodeDB::new(),
-//!     ctants.clone(),
-//!     BlockConstants::from_eth_block(
-//!         &eth_block,
-//!         &Word::from(ctants.chain_id),
-//!         vec![],
-//!     ),
+//!     Block::new::<()>(0.into(), Vec::new(), &eth_block).unwrap(),
 //! );
 //!
 //! let geth_steps: Vec<GethExecStep> = serde_json::from_str(input_trace).unwrap();

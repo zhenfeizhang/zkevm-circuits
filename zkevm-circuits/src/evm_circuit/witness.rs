@@ -8,9 +8,13 @@ use crate::evm_circuit::{
     },
     util::RandomLinearCombination,
 };
-use bus_mapping::operation::{self, AccountField, CallContextField};
-use eth_types::evm_types::OpcodeId;
-use eth_types::{Address, ToLittleEndian, ToScalar, ToWord, Word};
+use bus_mapping::{
+    circuit_input_builder,
+    operation::{self, AccountField, CallContextField},
+};
+use eth_types::{
+    evm_types::OpcodeId, Address, ToLittleEndian, ToScalar, ToWord, Word,
+};
 use halo2::arithmetic::{BaseExt, FieldExt};
 use pairing::bn256::Fr as Fp;
 use sha3::{Digest, Keccak256};
@@ -637,6 +641,20 @@ impl Rw {
     }
 }
 
+impl From<&circuit_input_builder::Block> for BlockContext {
+    fn from(block: &circuit_input_builder::Block) -> Self {
+        Self {
+            coinbase: block.coinbase,
+            gas_limit: block.gas_limit,
+            number: block.number,
+            timestamp: block.timestamp,
+            difficulty: block.difficulty,
+            base_fee: block.base_fee,
+            history_hashes: block.history_hashes.clone(),
+        }
+    }
+}
+
 impl From<&operation::OperationContainer> for RwMap {
     fn from(container: &operation::OperationContainer) -> Self {
         let mut rws = HashMap::default();
@@ -845,8 +863,8 @@ impl From<&operation::OperationContainer> for RwMap {
     }
 }
 
-impl From<&bus_mapping::circuit_input_builder::ExecStep> for ExecutionState {
-    fn from(step: &bus_mapping::circuit_input_builder::ExecStep) -> Self {
+impl From<&circuit_input_builder::ExecStep> for ExecutionState {
+    fn from(step: &circuit_input_builder::ExecStep) -> Self {
         // TODO: error reporting. (errors are defined in
         // circuit_input_builder.rs)
         assert!(step.error.is_none());
@@ -893,9 +911,7 @@ impl From<&bus_mapping::bytecode::Bytecode> for Bytecode {
     }
 }
 
-fn step_convert(
-    step: &bus_mapping::circuit_input_builder::ExecStep,
-) -> ExecStep {
+fn step_convert(step: &circuit_input_builder::ExecStep) -> ExecStep {
     let result = ExecStep {
         call_index: step.call_index,
         rw_indices: step
@@ -935,9 +951,7 @@ fn step_convert(
     result
 }
 
-fn tx_convert(
-    tx: &bus_mapping::circuit_input_builder::Transaction,
-) -> Transaction {
+fn tx_convert(tx: &circuit_input_builder::Transaction) -> Transaction {
     Transaction {
         id: 1,
         nonce: tx.nonce,
@@ -961,9 +975,9 @@ fn tx_convert(
                 is_root: call.is_root,
                 is_create: call.is_create(),
                 code_source: match call.code_source {
-                    bus_mapping::circuit_input_builder::CodeSource::Address(
-                        _,
-                    ) => CodeSource::Account(call.code_hash.to_word()),
+                    circuit_input_builder::CodeSource::Address(_) => {
+                        CodeSource::Account(call.code_hash.to_word())
+                    }
                     _ => unimplemented!(),
                 },
                 rw_counter_end_of_reversion: call.rw_counter_end_of_reversion,
@@ -986,20 +1000,12 @@ fn tx_convert(
 }
 
 pub fn block_convert(
-    block: &bus_mapping::circuit_input_builder::Block,
+    block: &circuit_input_builder::Block,
     code_db: &bus_mapping::state_db::CodeDB,
 ) -> Block<Fp> {
     Block {
         randomness: Fp::rand(),
-        context: BlockContext {
-            coinbase: block.block_const.coinbase,
-            gas_limit: block.block_const.gas_limit.low_u64(),
-            number: block.block_const.number.low_u64().into(),
-            timestamp: block.block_const.timestamp,
-            difficulty: block.block_const.difficulty,
-            base_fee: block.block_const.base_fee,
-            history_hashes: block.block_const.history_hashes.clone(),
-        },
+        context: block.into(),
         rws: RwMap::from(&block.container),
         txs: block.txs().iter().map(tx_convert).collect(),
         bytecodes: block
