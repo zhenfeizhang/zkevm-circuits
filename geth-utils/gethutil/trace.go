@@ -153,7 +153,8 @@ func TraceTx(config TraceConfig) (*ExecutionResult, error) {
 		GetHash: func(n uint64) common.Hash {
 			number := config.Block.Number.ToInt().Uint64()
 			if number > n && number-n <= 256 {
-				return common.BigToHash(toBigInt(config.HistoryHashes[256-number+n]))
+				index := uint64(len(config.HistoryHashes)) - number + n
+				return common.BigToHash(toBigInt(config.HistoryHashes[index]))
 			}
 			return common.Hash{}
 		},
