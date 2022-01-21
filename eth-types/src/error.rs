@@ -39,8 +39,7 @@ pub enum Error {
     TracingError(String),
     /// Block is missing information about number or base_fee
     IncompleteBlock,
-    /// Invalid [`crate::eth_types::GethExecTrace`] due to an unexpected form
-    /// of it.
+    /// Invalid [`crate::GethExecTrace`] due to an unexpected form of it.
     InvalidGethExecTrace(&'static str),
     /// Unable to figure out error at a [`GethExecStep`]
     UnexpectedExecStepError(&'static str, GethExecStep),
