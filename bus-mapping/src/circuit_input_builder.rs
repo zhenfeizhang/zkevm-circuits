@@ -1172,20 +1172,6 @@ impl<'a> CircuitInputBuilder {
                     let is_success = !geth_next_step.stack.last()?.is_zero();
                     call_is_success
                         .insert(call_indices.pop().unwrap(), is_success);
-                // When callee doesn't have code for execution, the depth won't
-                // change, so we need to catch such cases here.
-                } else if matches!(
-                    geth_step.op,
-                    OpcodeId::CREATE
-                        | OpcodeId::CALL
-                        | OpcodeId::CALLCODE
-                        | OpcodeId::DELEGATECALL
-                        | OpcodeId::CREATE2
-                        | OpcodeId::STATICCALL
-                ) {
-                    call_indices.push(index);
-                    let is_success = !geth_next_step.stack.last()?.is_zero();
-                    call_is_success.insert(index, is_success);
                 }
             }
         }
