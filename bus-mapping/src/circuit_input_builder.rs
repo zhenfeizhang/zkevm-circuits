@@ -6,7 +6,7 @@ use crate::geth_errors::*;
 use crate::operation::container::OperationContainer;
 use crate::operation::{
     AccountField, CallContextField, MemoryOp, Op, OpEnum, Operation, RWCounter,
-    StackOp, RW,
+    StackOp, Target, RW,
 };
 use crate::state_db::{self, CodeDB, StateDB};
 use crate::Error;
@@ -336,17 +336,19 @@ pub struct CallContext {
     /// call. When a subcall in this call succeeds, the `swc` increases by the
     /// number of successful state writes in the subcall.
     pub swc: usize,
-    /// Reverse operations of state write
-    pub reverse_ops: Vec<OpEnum>,
+    /// Reversible operations of state write.  This vector accumulates the
+    /// reversible write operations that happened in successfull nested calls
+    /// (success callees).
+    pub reversible_op_refs: Vec<OperationRef>,
     /// Success callees' (index, rw_counter_end_of_reversion_offset), where the
     /// later is the accumulated swc of caller at the step triggering the call.
     pub success_callees: Vec<(usize, usize)>,
 }
 
 impl CallContext {
-    /// Stage a reverse operation for reversion in the future.
-    pub fn push_reverse_op<T: Op>(&mut self, op: T) {
-        self.reverse_ops.push(op.into_enum());
+    /// Stage an operation for reversion in the future.
+    pub fn push_reversible_op_ref(&mut self, op_ref: OperationRef) {
+        self.reversible_op_refs.push(op_ref);
         self.swc += 1;
     }
 }
@@ -560,11 +562,16 @@ impl<'a> CircuitInputStateRef<'a> {
     /// [`RWCounter`] and then adds a reference to the stored operation
     /// ([`OperationRef`]) inside the bus-mapping instance of the current
     /// [`ExecStep`].  Then increase the block_ctx [`RWCounter`] by one.
-    pub fn push_op<T: Op>(&mut self, op: T) {
-        let op_ref = self
-            .block
-            .container
-            .insert(Operation::new(self.block_ctx.rwc.inc_pre(), op));
+    pub fn push_op<T: Op>(&mut self, rw: RW, op: T) {
+        let op_ref = self.block.container.insert(Operation::new(
+            self.block_ctx.rwc.inc_pre(),
+            rw,
+            op,
+        ));
+        // if the op can revert, store it in the caller context
+        if T::REVERSIBLE & matches!(rw, RW::WRITE) {
+            self.caller_ctx_mut().push_reversible_op_ref(op_ref);
+        }
         self.step.bus_mapping_instance.push(op_ref);
     }
 
@@ -580,12 +587,14 @@ impl<'a> CircuitInputStateRef<'a> {
         value: u8,
     ) {
         let call_id = self.call().call_id;
-        self.push_op(MemoryOp {
+        self.push_op(
             rw,
-            call_id,
-            address,
-            value,
-        });
+            MemoryOp {
+                call_id,
+                address,
+                value,
+            },
+        );
     }
 
     /// Push a [`StackOp`] into the [`OperationContainer`] with the next
@@ -600,12 +609,14 @@ impl<'a> CircuitInputStateRef<'a> {
         value: Word,
     ) {
         let call_id = self.call().call_id;
-        self.push_op(StackOp {
+        self.push_op(
             rw,
-            call_id,
-            address,
-            value,
-        });
+            StackOp {
+                call_id,
+                address,
+                value,
+            },
+        );
     }
 
     /// Reference to the caller Call
@@ -799,38 +810,50 @@ impl<'a> CircuitInputStateRef<'a> {
             Error::InvalidGethExecTrace("handle_return: call stack is empty"),
         )?;
         if is_success {
-            // If the return was successful, accumulate the success callees and
-            // swc.
+            // If the return was successful, accumulate the success callees,
+            // swc and reverse_ops.
             if let Some((_, caller_ctx)) = self.tx_ctx.call_stack.last_mut() {
                 caller_ctx.success_callees.extend(call_ctx.success_callees);
                 caller_ctx.success_callees.push((call_idx, caller_ctx.swc));
                 caller_ctx.swc += call_ctx.swc;
-                caller_ctx.reverse_ops.extend(call_ctx.reverse_ops);
+                caller_ctx
+                    .reversible_op_refs
+                    .extend(call_ctx.reversible_op_refs);
             }
         } else {
-            // Apply reverse_ops to state and push to container.
-            for op in call_ctx.reverse_ops.into_iter().rev() {
-                match op {
-                    OpEnum::Storage(op) => {
+            // Apply reverted reversible_ops to state and push to container.
+            for op_ref in call_ctx.reversible_op_refs.into_iter().rev() {
+                let container = &self.block.container;
+                match op_ref {
+                    OperationRef(Target::Storage, idx) => {
+                        let op = container.storage[idx].op().reverse();
                         let (_, account) =
                             self.sdb.get_storage_mut(&op.address, &op.key);
                         *account = op.value;
                         self.block.container.insert(Operation::new(
                             self.block_ctx.rwc.inc_pre(),
+                            RW::WRITE,
                             op,
                         ));
                     }
-                    OpEnum::TxAccessListAccount(op) => {
+                    OperationRef(Target::TxAccessListAccount, idx) => {
+                        let op = container.tx_access_list_account[idx]
+                            .op()
+                            .reverse();
                         if !op.value {
                             self.sdb
                                 .remove_account_from_access_list(&op.address);
                         }
                         self.block.container.insert(Operation::new(
                             self.block_ctx.rwc.inc_pre(),
+                            RW::WRITE,
                             op,
                         ));
                     }
-                    OpEnum::TxAccessListAccountStorage(op) => {
+                    OperationRef(Target::TxAccessListAccountStorage, idx) => {
+                        let op = container.tx_access_list_account_storage[idx]
+                            .op()
+                            .reverse();
                         if !op.value {
                             self.sdb.remove_account_storage_from_access_list(
                                 &(op.address, op.key),
@@ -838,10 +861,12 @@ impl<'a> CircuitInputStateRef<'a> {
                         }
                         self.block.container.insert(Operation::new(
                             self.block_ctx.rwc.inc_pre(),
+                            RW::WRITE,
                             op,
                         ));
                     }
-                    OpEnum::Account(op) => {
+                    OperationRef(Target::Account, idx) => {
+                        let op = container.account[idx].op().reverse();
                         let (_, account) =
                             self.sdb.get_account_mut(&op.address);
                         match op.field {
@@ -854,6 +879,7 @@ impl<'a> CircuitInputStateRef<'a> {
                         }
                         self.block.container.insert(Operation::new(
                             self.block_ctx.rwc.inc_pre(),
+                            RW::WRITE,
                             op,
                         ));
                     }
@@ -864,6 +890,7 @@ impl<'a> CircuitInputStateRef<'a> {
             // callees.
             let rw_counter_end_of_reversion =
                 usize::from(self.block_ctx.rwc) - 1;
+            // Map call_id -> rw_counter_end_of_reversion
             let call_rw_counter_end_of_reversion = iter::once((call_idx, 0))
                 .chain(call_ctx.success_callees)
                 .map(|(call_idx, offset)| {

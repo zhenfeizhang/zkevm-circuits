@@ -48,44 +48,45 @@ impl Opcode for Call {
             ),
             (CallContextField::Depth, caller_call.depth.into()),
         ] {
-            state.push_op(CallContextOp {
-                rw: RW::READ,
-                call_id: caller_call.call_id,
-                field,
-                value,
-            });
+            state.push_op(
+                RW::READ,
+                CallContextOp {
+                    call_id: caller_call.call_id,
+                    field,
+                    value,
+                },
+            );
         }
 
         for i in 0..7 {
-            state.push_op(StackOp {
-                rw: RW::READ,
-                call_id: caller_call.call_id,
-                address: step.stack.nth_last_filled(i),
-                value: step.stack.nth_last(i)?,
-            });
+            state.push_op(
+                RW::READ,
+                StackOp {
+                    call_id: caller_call.call_id,
+                    address: step.stack.nth_last_filled(i),
+                    value: step.stack.nth_last(i)?,
+                },
+            );
         }
-        state.push_op(StackOp {
-            rw: RW::WRITE,
-            call_id: caller_call.call_id,
-            address: step.stack.nth_last_filled(6),
-            value: (call.is_success as u64).into(),
-        });
+        state.push_op(
+            RW::WRITE,
+            StackOp {
+                call_id: caller_call.call_id,
+                address: step.stack.nth_last_filled(6),
+                value: (call.is_success as u64).into(),
+            },
+        );
 
         let is_cold_access = state.sdb.add_account_to_access_list(call.address);
-        state.push_op(TxAccessListAccountOp {
-            tx_id,
-            address: call.address,
-            value: true,
-            value_prev: !is_cold_access,
-        });
-        state
-            .caller_ctx_mut()
-            .push_reverse_op(TxAccessListAccountOp {
+        state.push_op(
+            RW::WRITE,
+            TxAccessListAccountOp {
                 tx_id,
                 address: call.address,
-                value: !is_cold_access,
-                value_prev: true,
-            });
+                value: true,
+                value_prev: !is_cold_access,
+            },
+        );
 
         for (field, value) in [
             (CallContextField::RwCounterEndOfReversion, 0.into()),
@@ -94,12 +95,14 @@ impl Opcode for Call {
                 (call.is_persistent as u64).into(),
             ),
         ] {
-            state.push_op(CallContextOp {
-                rw: RW::READ,
-                call_id: call.call_id,
-                field,
-                value,
-            });
+            state.push_op(
+                RW::READ,
+                CallContextOp {
+                    call_id: call.call_id,
+                    field,
+                    value,
+                },
+            );
         }
 
         let (found, caller_account) =
@@ -110,20 +113,15 @@ impl Opcode for Call {
         let caller_balance_prev = caller_account.balance;
         let caller_balance = caller_account.balance - call.value;
         caller_account.balance = caller_balance;
-        state.push_op(AccountOp {
-            rw: RW::WRITE,
-            address: call.caller_address,
-            field: AccountField::Balance,
-            value: caller_balance,
-            value_prev: caller_balance_prev,
-        });
-        state.call_ctx_mut().push_reverse_op(AccountOp {
-            rw: RW::WRITE,
-            address: call.caller_address,
-            field: AccountField::Balance,
-            value: caller_balance_prev,
-            value_prev: caller_balance,
-        });
+        state.push_op(
+            RW::WRITE,
+            AccountOp {
+                address: call.caller_address,
+                field: AccountField::Balance,
+                value: caller_balance,
+                value_prev: caller_balance_prev,
+            },
+        );
 
         let (found, callee_account) = state.sdb.get_account_mut(&call.address);
         if !found {
@@ -133,33 +131,30 @@ impl Opcode for Call {
         let callee_balance_prev = callee_account.balance;
         let callee_balance = callee_account.balance + call.value;
         callee_account.balance = callee_balance;
-        state.push_op(AccountOp {
-            rw: RW::WRITE,
-            address: call.address,
-            field: AccountField::Balance,
-            value: callee_balance,
-            value_prev: callee_balance_prev,
-        });
-        state.call_ctx_mut().push_reverse_op(AccountOp {
-            rw: RW::WRITE,
-            address: call.address,
-            field: AccountField::Balance,
-            value: callee_balance_prev,
-            value_prev: callee_balance,
-        });
+        state.push_op(
+            RW::WRITE,
+            AccountOp {
+                address: call.address,
+                field: AccountField::Balance,
+                value: callee_balance,
+                value_prev: callee_balance_prev,
+            },
+        );
 
         let (_, account) = state.sdb.get_account_mut(&call.address);
         for (field, value) in [
             (AccountField::Nonce, account.nonce),
             (AccountField::CodeHash, account.code_hash.to_word()),
         ] {
-            state.push_op(AccountOp {
-                rw: RW::READ,
-                address: call.address,
-                field,
-                value,
-                value_prev: value,
-            });
+            state.push_op(
+                RW::READ,
+                AccountOp {
+                    address: call.address,
+                    field,
+                    value,
+                    value_prev: value,
+                },
+            );
         }
 
         // Calculate next_memory_word_size and callee_gas_left manually in case
@@ -224,12 +219,14 @@ impl Opcode for Call {
                 state.caller_ctx().swc.into(),
             ),
         ] {
-            state.push_op(CallContextOp {
-                rw: RW::WRITE,
-                call_id: caller_call.call_id,
-                field,
-                value,
-            });
+            state.push_op(
+                RW::WRITE,
+                CallContextOp {
+                    call_id: caller_call.call_id,
+                    field,
+                    value,
+                },
+            );
         }
 
         for (field, value) in [
@@ -264,12 +261,14 @@ impl Opcode for Call {
             (CallContextField::LastCalleeReturnDataOffset, 0.into()),
             (CallContextField::LastCalleeReturnDataLength, 0.into()),
         ] {
-            state.push_op(CallContextOp {
-                rw: RW::READ,
-                call_id: call.call_id,
-                field,
-                value,
-            });
+            state.push_op(
+                RW::READ,
+                CallContextOp {
+                    call_id: call.call_id,
+                    field,
+                    value,
+                },
+            );
         }
 
         Ok(())

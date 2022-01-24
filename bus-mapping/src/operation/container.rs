@@ -72,21 +72,23 @@ impl OperationContainer {
     /// vector.
     pub fn insert<T: Op>(&mut self, op: Operation<T>) -> OperationRef {
         let rwc = op.rwc();
+        let rw = op.rw();
         match op.op.into_enum() {
             OpEnum::Memory(op) => {
-                self.memory.push(Operation::new(rwc, op));
+                self.memory.push(Operation::new(rwc, rw, op));
                 OperationRef::from((Target::Memory, self.memory.len() - 1))
             }
             OpEnum::Stack(op) => {
-                self.stack.push(Operation::new(rwc, op));
+                self.stack.push(Operation::new(rwc, rw, op));
                 OperationRef::from((Target::Stack, self.stack.len() - 1))
             }
             OpEnum::Storage(op) => {
-                self.storage.push(Operation::new(rwc, op));
+                self.storage.push(Operation::new(rwc, rw, op));
                 OperationRef::from((Target::Storage, self.storage.len() - 1))
             }
             OpEnum::TxAccessListAccount(op) => {
-                self.tx_access_list_account.push(Operation::new(rwc, op));
+                self.tx_access_list_account
+                    .push(Operation::new(rwc, rw, op));
                 OperationRef::from((
                     Target::TxAccessListAccount,
                     self.tx_access_list_account.len() - 1,
@@ -94,29 +96,29 @@ impl OperationContainer {
             }
             OpEnum::TxAccessListAccountStorage(op) => {
                 self.tx_access_list_account_storage
-                    .push(Operation::new(rwc, op));
+                    .push(Operation::new(rwc, rw, op));
                 OperationRef::from((
                     Target::TxAccessListAccountStorage,
                     self.tx_access_list_account_storage.len() - 1,
                 ))
             }
             OpEnum::TxRefund(op) => {
-                self.tx_refund.push(Operation::new(rwc, op));
+                self.tx_refund.push(Operation::new(rwc, rw, op));
                 OperationRef::from((Target::TxRefund, self.tx_refund.len() - 1))
             }
             OpEnum::Account(op) => {
-                self.account.push(Operation::new(rwc, op));
+                self.account.push(Operation::new(rwc, rw, op));
                 OperationRef::from((Target::Account, self.account.len() - 1))
             }
             OpEnum::AccountDestructed(op) => {
-                self.account_destructed.push(Operation::new(rwc, op));
+                self.account_destructed.push(Operation::new(rwc, rw, op));
                 OperationRef::from((
                     Target::AccountDestructed,
                     self.account_destructed.len() - 1,
                 ))
             }
             OpEnum::CallContext(op) => {
-                self.call_context.push(Operation::new(rwc, op));
+                self.call_context.push(Operation::new(rwc, rw, op));
                 OperationRef::from((
                     Target::CallContext,
                     self.call_context.len() - 1,

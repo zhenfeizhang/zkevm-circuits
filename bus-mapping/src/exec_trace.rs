@@ -6,7 +6,7 @@ use std::fmt;
 #[derive(Clone, Copy, PartialEq, Eq)]
 /// The target and index of an `Operation` in the context of an
 /// `ExecutionTrace`.
-pub struct OperationRef(Target, usize);
+pub struct OperationRef(pub Target, pub usize);
 
 impl fmt::Debug for OperationRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
