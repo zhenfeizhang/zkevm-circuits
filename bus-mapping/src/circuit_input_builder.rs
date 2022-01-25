@@ -886,34 +886,28 @@ impl<'a> CircuitInputStateRef<'a> {
                     "handle_return: call stack is empty",
                 ))?;
         let call_ctx = &mut self.tx_ctx.calls[call_idx];
-        let call_ctx_swc = call_ctx.swc;
-        let call_ctx_success_callees =
-            replace(&mut call_ctx.success_callees, vec![]);
-        let call_ctx_reversible_op_refs =
+        let swc = call_ctx.swc;
+        let success_callees = replace(&mut call_ctx.success_callees, vec![]);
+        let reversible_op_refs =
             replace(&mut call_ctx.reversible_op_refs, vec![]);
         if is_success {
             // If the return was successful, accumulate the success callees,
             // swc and reverse_ops.
-            let caller_idx = self.tx_ctx.call_stack.last();
-            if let Some(caller_ctx) =
-                caller_idx.map(|i| &mut self.tx_ctx.calls[*i])
-            {
-                caller_ctx.success_callees.extend(call_ctx_success_callees);
+            if let Some(caller_idx) = self.tx_ctx.call_stack.last() {
+                let mut caller_ctx = &mut self.tx_ctx.calls[*caller_idx];
+                caller_ctx.success_callees.extend(success_callees);
                 caller_ctx.success_callees.push((call_idx, caller_ctx.swc));
-                caller_ctx.swc += call_ctx_swc;
-                caller_ctx
-                    .reversible_op_refs
-                    .extend(call_ctx_reversible_op_refs);
+                caller_ctx.swc += swc;
+                caller_ctx.reversible_op_refs.extend(reversible_op_refs);
             }
         } else {
-            self.handle_reversible_ops(call_ctx_reversible_op_refs);
+            self.handle_reversible_ops(reversible_op_refs);
             // Set rw_counter_end_of_reversion of current call and success
             // callees.
             let rw_counter_end_of_reversion =
                 usize::from(self.block_ctx.rwc) - 1;
-            for (call_idx, offset) in [(call_idx, 0)]
-                .iter()
-                .chain(call_ctx_success_callees.iter())
+            for (call_idx, offset) in
+                [(call_idx, 0)].iter().chain(success_callees.iter())
             {
                 // offset stores the swc of the caller when the call
                 // started, which corresponds
