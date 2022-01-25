@@ -5,8 +5,8 @@ use crate::exec_trace::OperationRef;
 use crate::geth_errors::*;
 use crate::operation::container::OperationContainer;
 use crate::operation::{
-    AccountField, CallContextField, MemoryOp, Op, OpEnum, Operation, RWCounter,
-    StackOp, Target, RW,
+    AccountField, CallContextField, CallContextOp, MemoryOp, Op, Operation,
+    RWCounter, StackOp, Target, RW,
 };
 use crate::state_db::{self, CodeDB, StateDB};
 use crate::Error;
@@ -19,11 +19,8 @@ use eth_types::{
     Word,
 };
 use ethers_core::utils::{get_contract_address, get_create2_address};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::mem::replace;
-use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
-    iter,
-};
 
 use crate::rpc::GethClient;
 use ethers_providers::JsonRpcClient;
@@ -333,6 +330,8 @@ impl Call {
 /// Context of a [`Call`].
 #[derive(Debug, Default)]
 pub struct CallContext {
+    /// Caller State Write Counter when this call is triggered.
+    pub caller_swc: usize,
     /// State Write Counter tracks the count of state write operations in the
     /// call. When a subcall in this call succeeds, the `swc` increases by the
     /// number of successful state writes in the subcall.
@@ -341,10 +340,9 @@ pub struct CallContext {
     /// reversible write operations that happened in successfull nested calls
     /// (success callees).
     pub reversible_op_refs: Vec<OperationRef>,
-    /// Success callees' (index, rw_counter_end_of_reversion_offset), where the
-    /// later is the accumulated swc of caller at the step triggering the call.
-    pub success_callees: Vec<(usize, usize)>,
-    op_idx_rwc_end_of_reversion: usize,
+    /// Success callees' index.
+    pub success_callees: Vec<usize>,
+    op_idx_rwc_end_of_reversion: Option<usize>,
 }
 
 impl CallContext {
@@ -576,7 +574,7 @@ impl<'a> CircuitInputStateRef<'a> {
     /// [`RWCounter`] and then adds a reference to the stored operation
     /// ([`OperationRef`]) inside the bus-mapping instance of the current
     /// [`ExecStep`].  Then increase the block_ctx [`RWCounter`] by one.
-    pub fn push_op<T: Op>(&mut self, rw: RW, op: T) {
+    pub fn push_op<T: Op>(&mut self, rw: RW, op: T) -> OperationRef {
         let op_ref = self.block.container.insert(Operation::new(
             self.block_ctx.rwc.inc_pre(),
             rw,
@@ -587,6 +585,34 @@ impl<'a> CircuitInputStateRef<'a> {
             self.caller_ctx_mut().push_reversible_op_ref(op_ref);
         }
         self.step.bus_mapping_instance.push(op_ref);
+        op_ref
+    }
+
+    /// Push a [`CallContextOp`] into the [`OperationContainer`] with the next
+    /// [`RWCounter`] by calling `push_op`.  If the field is
+    /// `RwCounterEndOfReversion`, store the operation reference in the call
+    /// context.
+    pub fn push_call_context_op(
+        &mut self,
+        rw: RW,
+        call_id: usize,
+        field: CallContextField,
+        value: Word,
+    ) {
+        let op_ref = self.push_op(
+            rw,
+            CallContextOp {
+                call_id,
+                field,
+                value,
+            },
+        );
+        // Store a reference to the RwCounterEndOfReversion operation in the
+        // call context in order to set it in the future.
+        if matches!(field, CallContextField::RwCounterEndOfReversion) {
+            self.tx_ctx.call_ctx_mut().op_idx_rwc_end_of_reversion =
+                Some(op_ref.as_usize());
+        }
     }
 
     /// Push a [`MemoryOp`] into the [`OperationContainer`] with the next
@@ -672,8 +698,14 @@ impl<'a> CircuitInputStateRef<'a> {
     /// [`CallContext`] in the `call_stack` of the [`TransactionContext`]
     pub fn push_call(&mut self, call: Call) {
         let index = self.tx.push_call(call);
-        self.tx_ctx
-            .push_call_index_ctx(index, CallContext::default());
+        let caller_swc = self.tx_ctx.caller_ctx().swc;
+        self.tx_ctx.push_call_index_ctx(
+            index,
+            CallContext {
+                caller_swc,
+                ..Default::default()
+            },
+        );
     }
 
     /// Return the contract address of a CREATE step.  This is calculated by
@@ -896,7 +928,7 @@ impl<'a> CircuitInputStateRef<'a> {
             if let Some(caller_idx) = self.tx_ctx.call_stack.last() {
                 let mut caller_ctx = &mut self.tx_ctx.calls[*caller_idx];
                 caller_ctx.success_callees.extend(success_callees);
-                caller_ctx.success_callees.push((call_idx, caller_ctx.swc));
+                caller_ctx.success_callees.push(call_idx);
                 caller_ctx.swc += swc;
                 caller_ctx.reversible_op_refs.extend(reversible_op_refs);
             }
@@ -906,26 +938,25 @@ impl<'a> CircuitInputStateRef<'a> {
             // callees.
             let rw_counter_end_of_reversion =
                 usize::from(self.block_ctx.rwc) - 1;
-            for (call_idx, offset) in
-                [(call_idx, 0)].iter().chain(success_callees.iter())
-            {
-                // offset stores the swc of the caller when the call
-                // started, which corresponds
-                // to the number of reverted operations that will be applied
-                // after the call
-                // `rw_counter_end_of_reversion` to reach the failing call
-                // `rw_counter_end_of_reversion`.
-                self.tx.calls[*call_idx].rw_counter_end_of_reversion =
-                    rw_counter_end_of_reversion - offset;
+            for call_idx in [call_idx].iter().chain(success_callees.iter()) {
+                // swc of the caller when the call started corresponds to the
+                // number of reverted operations that will be applied after the
+                // call's `rw_counter_end_of_reversion` to reach the failing
+                // call's `rw_counter_end_of_reversion`.
+                let mut call = &mut self.tx.calls[*call_idx];
+                let call_ctx = &self.tx_ctx.calls[*call_idx];
+                call.rw_counter_end_of_reversion =
+                    rw_counter_end_of_reversion - call_ctx.caller_swc;
 
-                // Update rw of CallContextField::RwCounterEndOfReversion to
+                // Set call's CallContextField::RwCounterEndOfReversion to
                 // correct value.
-                let op_idx_rwc_end_of_reversion =
-                    self.tx_ctx.calls[*call_idx].op_idx_rwc_end_of_reversion;
+                let op_idx_rwc_end_of_reversion = call_ctx
+                    .op_idx_rwc_end_of_reversion
+                    .expect("call rwc_end_of_reversion unset");
                 self.block.container.call_context
                     [op_idx_rwc_end_of_reversion]
                     .op_mut()
-                    .value = rw_counter_end_of_reversion.into();
+                    .value = call.rw_counter_end_of_reversion.into();
             }
         }
         Ok(())

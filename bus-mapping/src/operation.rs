@@ -640,7 +640,7 @@ impl Op for AccountDestructedOp {
 
 /// Represents a field parameter of the CallContext that can be accessed via EVM
 /// execution.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CallContextField {
     /// RwCounterEndOfReversion
     RwCounterEndOfReversion,

@@ -1,8 +1,7 @@
 use super::Opcode;
 use crate::circuit_input_builder::CircuitInputStateRef;
 use crate::operation::{
-    AccountField, AccountOp, CallContextField, CallContextOp, StackOp,
-    TxAccessListAccountOp,
+    AccountField, AccountOp, CallContextField, StackOp, TxAccessListAccountOp,
 };
 use crate::{operation::RW, Error};
 use eth_types::{
@@ -48,13 +47,16 @@ impl Opcode for Call {
             ),
             (CallContextField::Depth, caller_call.depth.into()),
         ] {
-            state.push_op(
+            state.push_call_context_op(
                 RW::READ,
-                CallContextOp {
-                    call_id: caller_call.call_id,
-                    field,
-                    value,
-                },
+                // TODO: Review with Han why this is caller and not call.
+                // If this is caller, it means that a
+                // given call_id can have different values for each field
+                // here (one for each callee of the
+                // call).
+                caller_call.call_id,
+                field,
+                value,
             );
         }
 
@@ -95,14 +97,7 @@ impl Opcode for Call {
                 (call.is_persistent as u64).into(),
             ),
         ] {
-            state.push_op(
-                RW::READ,
-                CallContextOp {
-                    call_id: call.call_id,
-                    field,
-                    value,
-                },
-            );
+            state.push_call_context_op(RW::READ, call.call_id, field, value);
         }
 
         let (found, caller_account) =
@@ -219,13 +214,11 @@ impl Opcode for Call {
                 state.caller_ctx().swc.into(),
             ),
         ] {
-            state.push_op(
+            state.push_call_context_op(
                 RW::WRITE,
-                CallContextOp {
-                    call_id: caller_call.call_id,
-                    field,
-                    value,
-                },
+                caller_call.call_id,
+                field,
+                value,
             );
         }
 
@@ -261,14 +254,7 @@ impl Opcode for Call {
             (CallContextField::LastCalleeReturnDataOffset, 0.into()),
             (CallContextField::LastCalleeReturnDataLength, 0.into()),
         ] {
-            state.push_op(
-                RW::READ,
-                CallContextOp {
-                    call_id: call.call_id,
-                    field,
-                    value,
-                },
-            );
+            state.push_call_context_op(RW::READ, call.call_id, field, value);
         }
 
         Ok(())
