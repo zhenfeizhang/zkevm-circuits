@@ -158,6 +158,10 @@ pub struct BlockContext {
     /// Used to track the global counter in every operation in the block.
     /// Contains the next available value.
     pub rwc: RWCounter,
+    /// Map call_id to (tx_index, call_index) (where tx_index is the index used
+    /// in Block.txs and call_index is the index used in Transaction.
+    /// calls).
+    call_map: HashMap<usize, (usize, usize)>,
 }
 
 impl Default for BlockContext {
@@ -171,6 +175,7 @@ impl BlockContext {
     pub fn new() -> Self {
         Self {
             rwc: RWCounter::new(),
+            call_map: HashMap::new(),
         }
     }
 }
@@ -652,9 +657,13 @@ impl<'a> CircuitInputStateRef<'a> {
     /// Push a new [`Call`] into the [`Transaction`], and add its index and
     /// [`CallContext`] in the `call_stack` of the [`TransactionContext`]
     pub fn push_call(&mut self, call: Call) {
-        let index = self.tx.push_call(call);
+        let call_id = call.call_id;
+        let call_idx = self.tx.push_call(call);
         self.tx_ctx
-            .push_call_index_ctx(index, CallContext::default());
+            .push_call_index_ctx(call_idx, CallContext::default());
+        self.block_ctx
+            .call_map
+            .insert(call_id, (self.block.txs.len() - 1, call_idx));
     }
 
     /// Return the contract address of a CREATE step.  This is calculated by
@@ -893,9 +902,6 @@ impl<'a> CircuitInputStateRef<'a> {
         let call_ctx = &self.tx_ctx.calls[call_idx];
         // Map of calls reverted in this iteration, by call index.
         let mut rev_call_map = vec![false; self.tx.calls.len()];
-        // Map of call_context operation reference in container for each call's
-        // RwCounterEndOfReversion, by call index.
-        let mut rwc_eor_map = vec![0; self.tx.calls.len()];
         for step in self.tx.steps[call_ctx.step_index..].iter().rev() {
             if self.tx_ctx.calls[step.call_index].reverted {
                 continue;
@@ -909,18 +915,6 @@ impl<'a> CircuitInputStateRef<'a> {
                         self.block_ctx,
                         self.sdb,
                     );
-                }
-                // Store the location of CallContext RwCounterEndOfReversion
-                // operation to later set its value.
-                if let OperationRef(Target::CallContext, idx) = op_ref {
-                    let op = &self.block.container.call_context[*idx].op();
-                    if matches!(
-                        op.field,
-                        CallContextField::RwCounterEndOfReversion
-                    ) && op.call_id == self.tx.calls[step.call_index].call_id
-                    {
-                        rwc_eor_map[step.call_index] = *idx;
-                    }
                 }
             }
             // When we reach the step that triggers a call, assign the
@@ -937,10 +931,6 @@ impl<'a> CircuitInputStateRef<'a> {
             .collect();
         for call_idx in &rev_calls {
             self.tx_ctx.calls[*call_idx].reverted = true;
-            self.block.container.call_context[rwc_eor_map[*call_idx]]
-                .op_mut()
-                .value =
-                self.tx.calls[*call_idx].rw_counter_end_of_reversion.into();
         }
     }
 
@@ -1211,6 +1201,42 @@ impl<'a> CircuitInputBuilder {
             eth_tx,
             is_success,
         )
+    }
+
+    /// Iterate over all generated CallContext RwCounterEndOfReversion
+    /// operations and set the correct value.  This is required because when we
+    /// generate the RwCounterEndOfReversion operation in
+    /// `gen_associated_ops` we don't know yet which value it will take,
+    /// so we put a placeholder; so we do it here after the values are known.
+    fn set_value_ops_call_context_rwc_eor(&mut self) {
+        for oper in self.block.container.call_context.iter_mut() {
+            let op = oper.op_mut();
+            if matches!(op.field, CallContextField::RwCounterEndOfReversion) {
+                let (tx_idx, call_idx) = self
+                    .block_ctx
+                    .call_map
+                    .get(&op.call_id)
+                    .expect("call_id not found in call_map");
+                op.value = self.block.txs[*tx_idx].calls[*call_idx]
+                    .rw_counter_end_of_reversion
+                    .into();
+            }
+        }
+    }
+
+    /// Handle a block by handling each transaction to generate all the
+    /// associated operations.
+    pub fn handle_block(
+        &mut self,
+        eth_block: &EthBlock,
+        geth_traces: &[eth_types::GethExecTrace],
+    ) -> Result<(), Error> {
+        for (tx_index, tx) in eth_block.transactions.iter().enumerate() {
+            let geth_trace = &geth_traces[tx_index];
+            self.handle_tx(tx, geth_trace)?;
+        }
+        self.set_value_ops_call_context_rwc_eor();
+        Ok(())
     }
 
     /// Handle a transaction with its corresponding execution trace to generate
@@ -1712,10 +1738,7 @@ impl<P: JsonRpcClient> BuilderClient<P> {
         let block =
             Block::new(self.chain_id, self.history_hashes.clone(), eth_block)?;
         let mut builder = CircuitInputBuilder::new(sdb, code_db, block);
-        for (tx_index, tx) in eth_block.transactions.iter().enumerate() {
-            let geth_trace = &geth_traces[tx_index];
-            builder.handle_tx(tx, geth_trace)?;
-        }
+        builder.handle_block(eth_block, geth_traces)?;
         Ok(builder)
     }
 
