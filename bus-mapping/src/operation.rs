@@ -184,7 +184,7 @@ impl Op for MemoryOp {
         OpEnum::Memory(self)
     }
     fn reverse(&self) -> Self {
-        unimplemented!()
+        unreachable!()
     }
 }
 
@@ -265,7 +265,7 @@ impl Op for StackOp {
         OpEnum::Stack(self)
     }
     fn reverse(&self) -> Self {
-        unimplemented!()
+        unreachable!()
     }
 }
 
@@ -734,7 +734,7 @@ impl Op for CallContextOp {
         OpEnum::CallContext(self)
     }
     fn reverse(&self) -> Self {
-        unimplemented!()
+        unreachable!()
     }
 }
 
@@ -804,6 +804,11 @@ impl<T: Op> Operation<T> {
             revert: false,
             op,
         }
+    }
+
+    /// Returns true if this operation can revert
+    pub fn reverts(&self) -> bool {
+        return T::REVERSIBLE & matches!(self.rw, RW::WRITE);
     }
 
     /// Return this `Operation` `rwc`
