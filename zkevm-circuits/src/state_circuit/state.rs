@@ -19,31 +19,31 @@ use pairing::arithmetic::FieldExt;
 /*
 Example state table:
 
-| tag  | address | rw_counter | value | q_write | padding | storage_key | value_prev |
-| ---       | ---     | ---        | ---   | ---     | ---     | ---         | ---        |
-| 1:Start   | 0       | 0          | 0     | 1       | 0       |             |            | // init row (write value 0)
-| 2:Memory  | 0       | 12         | 12    | 1       | 0       |             |            |
-| 2:Memory  | 0       | 24         | 12    | 0       | 0       |             |            |
-| 2:Memory  | 1       | 0          | 0     | 1       | 0       |             |            | // init row (write value 0)
-| 2:Memory  | 1       | 2          | 12    | 0       | 0       |             |            |
-| 2:Memory  |         |            |       |         | 1       |             |            | // padding
-| 2:Memory  |         |            |       |         | 1       |             |            | // padding
-| 1:Start   | 0       | 3          | 4     | 1       | 0       |             |            |
-| 3:Stack   | 0       | 17         | 32    | 1       | 0       |             |            |
-| 3:Stack   | 0       | 89         | 32    | 0       | 0       |             |            |
-| 3:Stack   | 1       | 48         | 32    | 1       | 0       |             |            |
-| 3:Stack   | 1       | 49         | 32    | 0       | 0       |             |            |
-| 3:Stack   |         |            |       |         | 1       |             |            | // padding
-| 1:Start   | 1       | 55         | 32    | 1       | 0       | 5           | 0          | // first storage op at the new address has to be write
-| 4:Storage | 1       | 56         | 33    | 1       | 0       | 8           | 32         |
-| 4:Storage |         |            |       |         | 1       |             |            | // padding
+| tag       | address | rw_counter | value | flag_write | flag_padding | storage_key | value_prev |
+| ---       | ---     | ---        | ---   | ---        | ---          | ---         | ---        |
+| 1:Start   | 0       | 0          | 0     | 1          | 0            |             |            | // init row (write value 0)
+| 2:Memory  | 0       | 12         | 12    | 1          | 0            |             |            |
+| 2:Memory  | 0       | 24         | 12    | 0          | 0            |             |            |
+| 2:Memory  | 1       | 0          | 0     | 1          | 0            |             |            | // init row (write value 0)
+| 2:Memory  | 1       | 2          | 12    | 0          | 0            |             |            |
+| 2:Memory  |         |            |       |            | 1            |             |            | // padding
+| 2:Memory  |         |            |       |            | 1            |             |            | // padding
+| 1:Start   | 0       | 3          | 4     | 1          | 0            |             |            |
+| 3:Stack   | 0       | 17         | 32    | 1          | 0            |             |            |
+| 3:Stack   | 0       | 89         | 32    | 0          | 0            |             |            |
+| 3:Stack   | 1       | 48         | 32    | 1          | 0            |             |            |
+| 3:Stack   | 1       | 49         | 32    | 0          | 0            |             |            |
+| 3:Stack   |         |            |       |            | 1            |             |            | // padding
+| 1:Start   | 1       | 55         | 32    | 1          | 0            | 5           | 0          | // first storage op at the new address has to be write
+| 4:Storage | 1       | 56         | 33    | 1          | 0            | 8           | 32         |
+| 4:Storage |         |            |       |            | 1            |             |            | // padding
 */
 
 /* Memory
 
-| Key1 (Tag) | Key2   | Key3    | Key4 | RWC | Value1 | Aux1 | Aux2 |
-| ---        | ---    | ---     | ---  | --- | ---    | ---  | ---  |
-|            | CallID | MemAddr | -    |     |        |      |      |
+| Key1 (Tag) | Key2   | Key3    | Key4 | RWC | Write | Value1 | Aux1 | Aux2 |
+| ---        | ---    | ---     | ---  | --- | ---   | ---    | ---  | ---  |
+|            | CallID | MemAddr | -    |     |       |        |      |      |
 | 1:Start    |
 
 */
@@ -58,14 +58,14 @@ Example state table:
 // memory, stack, and storage ops respectively two columns are not displayed:
 // address_diff and storage_key_diff (needed to check whether the address or
 // storage_key changed) storage_key and value_prev are needed for storage ops
-// only padding specifies whether the row is just a padding to fill all the rows
-// that are intended for a particular tag
+// only flag_padding specifies whether the row is just a padding to fill all the
+// rows that are intended for a particular tag
 
 /*
 Example bus mapping:
 // TODO: this is going to change
 
-| tag   | address | rw_counter | value | storage_key | value_prev | q_write |
+| tag   | address | rw_counter | value | storage_key | value_prev | flag_write |
 | ---      | ---     | ---        | ---   | ---         | ---        | ---     |
 | 2:Memory | 0       | 12         | 12    |             |            | 1       |
 | 2:Memory | 0       | 24         | 12    |             |            | 0       |
@@ -138,21 +138,16 @@ fn in_range_eq_const<F: FieldExt, I: Iterator<Item = usize> + Clone>(
 pub(crate) struct BusMapping<F: FieldExt> {
     rw_counter: Variable<usize, F>,
     tag: Variable<usize, F>,
-    q_write: Variable<bool, F>,
+    flag_write: Variable<bool, F>,
     address: Variable<F, F>,
-    value: Variable<F, F>,
     storage_key: Variable<F, F>,
+    value: Variable<F, F>,
     value_prev: Variable<F, F>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Config<
     F: FieldExt,
-    // When SANITY_CHECK is true, max_address/rw_counter/stack_address are
-    // required to be in the range of
-    // MEMORY_ADDRESS_MAX/RW_COUNTER_MAX/STACK_ADDRESS_MAX during circuit
-    // synthesis
-    const SANITY_CHECK: bool,
     const RW_COUNTER_MAX: usize,
     const MEMORY_ROWS_MAX: usize,
     const MEMORY_ADDRESS_MAX: usize,
@@ -170,8 +165,8 @@ pub struct Config<
     value: Column<Advice>, // Value 1
     // TODO: Aux 1
     // TODO: Aux 2
-    q_write: Column<Advice>,
-    padding: Column<Advice>, // Binary flag: wether this row is padding.
+    flag_write: Column<Advice>,
+    flag_padding: Column<Advice>, // Binary flag: wether this row is padding.
     storage_key: Column<Advice>,
     storage_key_diff_inv: Column<Advice>,
     value_prev: Column<Advice>,
@@ -187,7 +182,6 @@ pub struct Config<
 
 impl<
         F: FieldExt,
-        const SANITY_CHECK: bool,
         const RW_COUNTER_MAX: usize,
         const MEMORY_ROWS_MAX: usize,
         const MEMORY_ADDRESS_MAX: usize,
@@ -197,7 +191,6 @@ impl<
     >
     Config<
         F,
-        SANITY_CHECK,
         RW_COUNTER_MAX,
         MEMORY_ROWS_MAX,
         MEMORY_ADDRESS_MAX,
@@ -213,8 +206,8 @@ impl<
         let address_diff_inv = meta.advice_column();
         let rw_counter = meta.advice_column();
         let value = meta.advice_column();
-        let q_write = meta.advice_column();
-        let padding = meta.advice_column();
+        let flag_write = meta.advice_column();
+        let flag_padding = meta.advice_column();
         let storage_key = meta.advice_column();
         let storage_key_diff_inv = meta.advice_column();
         let value_prev = meta.advice_column();
@@ -228,7 +221,7 @@ impl<
 
         // First tag row.  Expr that evaluates to 1 when tag_cur = 1 and
         // tag_next = target, 0 otherwise.
-        let q_tag_first = |meta: &mut VirtualCells<F>, target: Tag| {
+        let is_tag_first = |meta: &mut VirtualCells<F>, target: Tag| {
             let tag_cur = meta.query_fixed(tag, Rotation::cur());
             let tag_next = meta.query_fixed(tag, Rotation::next());
 
@@ -240,7 +233,7 @@ impl<
 
         // Non first tag row.  Expr that evaluates to 1 when tag_cur = target, 0
         // otherwise.
-        let q_tag_not_first = |meta: &mut VirtualCells<F>, target: Tag| {
+        let is_tag_not_first = |meta: &mut VirtualCells<F>, target: Tag| {
             let tag = meta.query_fixed(tag, Rotation::cur());
 
             tag.clone()
@@ -248,27 +241,28 @@ impl<
                 * in_range_eq_const(tag, 1..=TAG_COUNT, target as usize)
         };
 
-        let q_memory_first = |meta: &mut VirtualCells<F>| q_tag_first(meta, Tag::Memory);
-        let q_memory_not_first = |meta: &mut VirtualCells<F>| q_tag_not_first(meta, Tag::Memory);
-        let q_stack_first = |meta: &mut VirtualCells<F>| q_tag_first(meta, Tag::Stack);
-        let q_stack_not_first = |meta: &mut VirtualCells<F>| q_tag_not_first(meta, Tag::Stack);
-        let q_storage_first = |meta: &mut VirtualCells<F>| q_tag_first(meta, Tag::Storage);
-        let q_storage_not_first = |meta: &mut VirtualCells<F>| q_tag_not_first(meta, Tag::Storage);
+        let is_memory_first = |meta: &mut VirtualCells<F>| is_tag_first(meta, Tag::Memory);
+        let is_memory_not_first = |meta: &mut VirtualCells<F>| is_tag_not_first(meta, Tag::Memory);
+        let is_stack_first = |meta: &mut VirtualCells<F>| is_tag_first(meta, Tag::Stack);
+        let is_stack_not_first = |meta: &mut VirtualCells<F>| is_tag_not_first(meta, Tag::Stack);
+        let is_storage_first = |meta: &mut VirtualCells<F>| is_tag_first(meta, Tag::Storage);
+        let is_storage_not_first =
+            |meta: &mut VirtualCells<F>| is_tag_not_first(meta, Tag::Storage);
 
         // NOTE(Edu): This is not binary!
         let address_diff_is_zero = IsZeroChip::configure(
             meta,
             |meta| {
-                let padding = meta.query_advice(padding, Rotation::cur());
-                let is_not_padding = one.clone() - padding;
+                let flag_padding = meta.query_advice(flag_padding, Rotation::cur());
+                let flag_not_padding = one.clone() - flag_padding;
                 let tag = meta.query_fixed(tag, Rotation::cur());
                 // tag = Tag::First -> 0
                 // tag = Tag::* -> != 0
                 // >2 otherwise
                 // NOTE(Edu): This is not binary!
-                let q_not_first = tag.clone() * (tag - tag_first.clone());
+                let flag_not_first = tag.clone() * (tag - tag_first.clone());
 
-                q_not_first * is_not_padding
+                flag_not_first * flag_not_padding
             },
             |meta| {
                 let address_cur = meta.query_advice(address, Rotation::cur());
@@ -284,55 +278,55 @@ impl<
         let address_monotone = MonotoneChip::<F, MEMORY_ADDRESS_MAX, true, false>::configure(
             meta,
             |meta| {
-                let padding = meta.query_advice(padding, Rotation::cur());
-                let is_not_padding = one.clone() - padding;
+                let flag_padding = meta.query_advice(flag_padding, Rotation::cur());
+                let flag_not_padding = one.clone() - flag_padding;
                 // Since q_memory_not_first and q_stack_non_first are
                 // mutually exclusive, q_not_first is binary.
-                let q_not_first = q_memory_not_first(meta) + q_stack_not_first(meta);
+                let q_not_first = is_memory_not_first(meta) + is_stack_not_first(meta);
 
-                q_not_first * is_not_padding
+                q_not_first * flag_not_padding
             },
             address,
         );
 
-        // NOTE(Edu): `padding` can only transition from 0 to 1, for Memory
+        // NOTE(Edu): `flag_padding` can only transition from 0 to 1, for Memory
         // AND Stack.
-        // Padding monotonicity could be checked using gates (as padding only
+        // flag_padding monotonicity could be checked using gates (as flag_padding only
         // takes values 0 and 1), but it's much slower than using a
         // lookup.
         let padding_monotone = MonotoneChip::<F, 1, true, false>::configure(
             meta,
-            |meta| q_memory_not_first(meta) + q_stack_not_first(meta),
-            padding,
+            |meta| is_memory_not_first(meta) + is_stack_not_first(meta),
+            flag_padding,
         );
 
         // A gate for the first row (does not need Rotation::prev).
         meta.create_gate("First memory row operation", |meta| {
             let value = meta.query_advice(value, Rotation::cur());
-            let q_write = meta.query_advice(q_write, Rotation::cur());
+            let flag_write = meta.query_advice(flag_write, Rotation::cur());
             let rw_counter = meta.query_advice(rw_counter, Rotation::cur());
             // NOTE(Edu):  `q_memory_first` is only true for the first row.
-            let q_memory_first = q_memory_first(meta);
+            let q_memory_first = is_memory_first(meta);
 
             //
             //      - values[0] == [0]
-            //      - q_writes[0] == 1
+            //      - flag_writes[0] == 1
             //      - rw_counters[0] == 0
 
             vec![
                 q_memory_first.clone() * value,
-                q_memory_first.clone() * (one.clone() - q_write),
+                q_memory_first.clone() * (one.clone() - flag_write),
                 q_memory_first * rw_counter,
             ]
         });
 
-        meta.create_gate("Memory operation + padding", |meta| {
+        meta.create_gate("Memory operation + flag_padding", |meta| {
             // If address_cur != address_prev, this is an `init`. We must
             // constrain:
             //      - values[0] == [0]
-            //      - q_writes[0] == 1
+            //      - flag_writes[0] == 1
             //      - rw_counters[0] == 0
-            let q_memory_not_first = q_memory_not_first(meta);
+            let q_memory_not_first = is_memory_not_first(meta);
             let address_diff = {
                 let address_prev = meta.query_advice(address, Rotation::prev());
                 let address_cur = meta.query_advice(address, Rotation::cur());
@@ -340,22 +334,17 @@ impl<
             };
 
             let value_cur = meta.query_advice(value, Rotation::cur());
-            let q_write = meta.query_advice(q_write, Rotation::cur());
+            let flag_write = meta.query_advice(flag_write, Rotation::cur());
             let rw_counter =
                 meta.query_advice(rw_counter, Rotation::cur());
 
-            // q_write == 0 or 1
-            // (q_write) * (1 - q_write)
-            let bool_check_q_write = q_write.clone() * (one.clone() - q_write.clone());
-
-            // If q_write == 0 (read), and rw_counter != 0, value_prev ==
+            // If flag_write == 0 (read), and rw_counter != 0, value_prev ==
             // value_cur
             let value_prev = meta.query_advice(value, Rotation::prev());
-            let q_read = one.clone() - q_write;
+            let flag_read = one.clone() - flag_write;
 
             let tag = meta.query_fixed(tag, Rotation::cur());
-            let padding = meta.query_advice(padding, Rotation::cur());
-            let bool_check_padding = padding.clone() * (one.clone() - padding);
+            let flag_padding = meta.query_advice(flag_padding, Rotation::cur());
 
             vec![
                 q_memory_not_first.clone()
@@ -363,41 +352,61 @@ impl<
                     * value_cur.clone(), // when address changes, the write value is 0
                 q_memory_not_first.clone()
                     * address_diff.clone()
-                    * q_read.clone(), // when address changes, the q_write is 1 (write)
+                    * flag_read.clone(), // when address changes, the flag_write is 1 (write)
                 q_memory_not_first.clone() * address_diff * rw_counter, // when address changes, rw_counter is 0
-                q_memory_not_first.clone() * bool_check_q_write, // q_write is either 0 or 1
-                q_memory_not_first * q_read * (value_cur - value_prev), // when reading, the value is the same as at the previous op
+                q_memory_not_first * flag_read * (value_cur - value_prev), // when reading, the value is the same as at the previous op
                 // Note that this last constraint needs to hold only when address doesn't change,
                 // but we don't need to check this as the first operation at the address always
-                // has to be write - that means q_read is 1 only when
+                // has to be write - that means flag_read is 1 only when
                 // the address and storage key don't change.
-                tag * bool_check_padding, // padding is 0 or 1
             ]
+        });
+
+        // NOTE(Edu): I've removed the advice columns boolean constraints for each
+        // particular Tag and grouped them all into these gates because they
+        // apply to all Tags. Boolean advice column constraints
+
+        meta.create_gate("flag_write bool", |meta| {
+            let tag = meta.query_fixed(tag, Rotation::cur());
+            let flag_write = meta.query_advice(flag_write, Rotation::cur());
+            // flag_write == 0 or 1
+            // (flag_write) * (1 - flag_write)
+            let bool_check = flag_write.clone() * (one.clone() - flag_write.clone());
+
+            // tag > 0 enables the constraint for flag_write to bee boolean.
+            vec![tag * bool_check]
+        });
+
+        meta.create_gate("flag_padding bool", |meta| {
+            let tag = meta.query_fixed(tag, Rotation::cur());
+            let flag_padding = meta.query_advice(flag_padding, Rotation::cur());
+            // flag_padding == 0 or 1
+            // (flag_padding) * (1 - flag_padding)
+            let bool_check = flag_padding.clone() * (one.clone() - flag_padding.clone());
+
+            // tag > 0 enables the constraint for flag_padding to bee boolean.
+            vec![tag * bool_check]
         });
 
         // We don't require first stack op to be write as this is enforced by
         // evm circuit.
 
         meta.create_gate("Stack operation", |meta| {
-            let q_stack_not_first = q_stack_not_first(meta);
+            let q_stack_not_first = is_stack_not_first(meta);
             let value_cur = meta.query_advice(value, Rotation::cur());
-            let q_write = meta.query_advice(q_write, Rotation::cur());
+            let flag_write = meta.query_advice(flag_write, Rotation::cur());
 
-            // q_write == 0 or 1
-            // (q_write) * (1 - q_write)
-            let bool_check_q_write = q_write.clone() * (one.clone() - q_write.clone());
-
-            // If q_write == 0 (read), and rw_counter != 0, value_prev == value_cur
+            // If flag_write == 0 (read), and rw_counter != 0, value_prev == value_cur
             let value_prev = meta.query_advice(value, Rotation::prev());
-            let q_read = one.clone() - q_write;
+            let flag_read = one.clone() - flag_write;
             // when addresses changes, we don't require the operation is write as this is
             // enforced by evm circuit
 
             vec![
-                q_stack_not_first.clone() * bool_check_q_write, // q_write is either 0 or 1
-                q_stack_not_first * q_read * (value_cur - value_prev), /* when reading, the
-                                                                 * value is the same as
-                                                                 * at the previous op */
+                q_stack_not_first * flag_read * (value_cur - value_prev), /* when reading, the
+                                                                           * value is the same
+                                                                           * as
+                                                                           * at the previous op */
             ]
         });
 
@@ -408,13 +417,13 @@ impl<
             let rw_counter_table = meta.query_fixed(rw_counter_table, Rotation::cur());
             let rw_counter_prev = meta.query_advice(rw_counter, Rotation::prev());
             let rw_counter = meta.query_advice(rw_counter, Rotation::cur());
-            let padding = meta.query_advice(padding, Rotation::cur());
-            let is_not_padding = one.clone() - padding;
-            let q_not_first = q_memory_not_first(meta) + q_stack_not_first(meta);
+            let flag_padding = meta.query_advice(flag_padding, Rotation::cur());
+            let flag_not_padding = one.clone() - flag_padding;
+            let q_not_first = is_memory_not_first(meta) + is_stack_not_first(meta);
 
             vec![(
                 q_not_first
-                    * is_not_padding
+                    * flag_not_padding
                     * address_diff_is_zero.clone().is_zero_expression
                     * (rw_counter - rw_counter_prev - one.clone()), /*
                                                                      * - 1 because it needs to
@@ -425,7 +434,7 @@ impl<
 
         // Memory address is in the allowed range.
         meta.lookup_any(|meta| {
-            let q_memory = q_memory_first(meta) + q_memory_not_first(meta);
+            let q_memory = is_memory_first(meta) + is_memory_not_first(meta);
             let address_cur = meta.query_advice(address, Rotation::cur());
             let memory_address_table_zero =
                 meta.query_fixed(memory_address_table_zero, Rotation::cur());
@@ -435,7 +444,7 @@ impl<
 
         // Stack address is in the allowed range.
         meta.lookup_any(|meta| {
-            let q_stack = q_stack_first(meta) + q_stack_not_first(meta);
+            let q_stack = is_stack_first(meta) + is_stack_not_first(meta);
             let address_cur = meta.query_advice(address, Rotation::cur());
             let stack_address_table_zero =
                 meta.query_fixed(stack_address_table_zero, Rotation::cur());
@@ -455,7 +464,7 @@ impl<
         // Memory first row value doesn't need to be checked - it is checked
         // above where memory init row value has to be 0.
         meta.lookup_any(|meta| {
-            let q_memory_not_first = q_memory_not_first(meta);
+            let q_memory_not_first = is_memory_not_first(meta);
             let value = meta.query_advice(value, Rotation::cur());
             let memory_value_table = meta.query_fixed(memory_value_table, Rotation::cur());
 
@@ -466,8 +475,8 @@ impl<
         let storage_key_diff_is_zero = IsZeroChip::configure(
             meta,
             |meta| {
-                let padding = meta.query_advice(padding, Rotation::cur());
-                let is_not_padding = one.clone() - padding;
+                let flag_padding = meta.query_advice(flag_padding, Rotation::cur());
+                let flag_not_padding = one.clone() - flag_padding;
 
                 let tag = meta.query_fixed(tag, Rotation::cur());
                 // tag = Tag::First -> 0
@@ -476,7 +485,7 @@ impl<
                 // NOTE(Edu): This is not binary!
                 let q_not_first = tag.clone() * (tag - tag_first.clone());
 
-                q_not_first * is_not_padding
+                q_not_first * flag_not_padding
             },
             |meta| {
                 let storage_key_cur = meta.query_advice(storage_key, Rotation::cur());
@@ -487,17 +496,17 @@ impl<
         );
 
         meta.create_gate("First storage row operation", |meta| {
-            let q_write = meta.query_advice(q_write, Rotation::cur());
-            let q_read = one.clone() - q_write;
+            let flag_write = meta.query_advice(flag_write, Rotation::cur());
+            let flag_read = one.clone() - flag_write;
 
             vec![
-                q_storage_first(meta) * q_read, /* first storage op has to be
-                                                 * write (q_write = 1) */
+                is_storage_first(meta) * flag_read, /* first storage op has to be
+                                                     * write (flag_write = 1) */
             ]
         });
 
         meta.create_gate("Storage operation", |meta| {
-            let q_storage_not_first = q_storage_not_first(meta);
+            let q_storage_not_first = is_storage_not_first(meta);
             let address_diff = {
                 let address_prev = meta.query_advice(address, Rotation::prev());
                 let address_cur = meta.query_advice(address, Rotation::cur());
@@ -516,38 +525,33 @@ impl<
             let value_prev_cur = meta.query_advice(value_prev, Rotation::cur());
             let value_prev_prev =
                 meta.query_advice(value_prev, Rotation::prev());
-            let q_write = meta.query_advice(q_write, Rotation::cur());
+            let flag_write = meta.query_advice(flag_write, Rotation::cur());
 
-            // q_write == 0 or 1
-            // (q_write) * (1 - q_write)
-            let bool_check_q_write = q_write.clone() * (one.clone() - q_write.clone());
-
-            // If q_write == 0 (read), and rw_counter != 0, value_prev == value_cur
+            // If flag_write == 0 (read), and rw_counter != 0, value_prev == value_cur
             let value_previous = meta.query_advice(value, Rotation::prev());
-            let q_read = one.clone() - q_write.clone();
+            let flag_read = one.clone() - flag_write.clone();
 
-            let padding = meta.query_advice(padding, Rotation::cur());
-            let is_not_padding = one.clone() - padding;
+            let flag_padding = meta.query_advice(flag_padding, Rotation::cur());
+            let flag_not_padding = one.clone() - flag_padding;
 
             vec![
-                q_storage_not_first.clone() * address_diff * q_read.clone(), // when address changes, the q_write is 1 (write)
-                q_storage_not_first.clone() * storage_key_diff * q_read.clone(), // when storage_key_diff changes, the q_write is 1 (write)
-                q_storage_not_first.clone() * bool_check_q_write, // q_write is either 0 or 1
+                q_storage_not_first.clone() * address_diff * flag_read.clone(), // when address changes, the flag_read is 0 (write)
+                q_storage_not_first.clone() * storage_key_diff * flag_read.clone(), // when storage_key_diff changes, the flag_read is 0 (write)
                 q_storage_not_first.clone()
-                    * q_read.clone()
+                    * flag_read.clone()
                     * (value_cur - value_previous.clone()), // when reading, the value is the same as at the previous op
                 // Note that this last constraint needs to hold only when address and storage key don't change,
                 // but we don't need to check this as the first operation at new address and
-                // new storage key always has to be write - that means q_read is 1 only when
+                // new storage key always has to be write - that means flag_read is 1 only when
                 // the address and storage key doesn't change.
-                is_not_padding.clone()
-                    * q_write
+                flag_not_padding.clone()
+                    * flag_write
                     * q_storage_not_first.clone()
                     * address_diff_is_zero.clone().is_zero_expression
                     * storage_key_diff_is_zero.clone().is_zero_expression
                     * (value_prev_cur.clone() - value_previous),
-                is_not_padding
-                    * q_read
+                flag_not_padding
+                    * flag_read
                     * q_storage_not_first
                     * address_diff_is_zero.clone().is_zero_expression
                     * storage_key_diff_is_zero.clone().is_zero_expression
@@ -564,13 +568,13 @@ impl<
             let rw_counter_table = meta.query_fixed(rw_counter_table, Rotation::cur());
             let rw_counter_prev = meta.query_advice(rw_counter, Rotation::prev());
             let rw_counter = meta.query_advice(rw_counter, Rotation::cur());
-            let padding = meta.query_advice(padding, Rotation::cur());
-            let is_not_padding = one.clone() - padding;
-            let q_storage_not_first = q_storage_not_first(meta);
+            let flag_padding = meta.query_advice(flag_padding, Rotation::cur());
+            let flag_not_padding = one.clone() - flag_padding;
+            let q_storage_not_first = is_storage_not_first(meta);
 
             vec![(
                 q_storage_not_first
-                    * is_not_padding
+                    * flag_not_padding
                     * address_diff_is_zero.clone().is_zero_expression
                     * storage_key_diff_is_zero.clone().is_zero_expression
                     * (rw_counter - rw_counter_prev - one.clone()), /*
@@ -588,8 +592,8 @@ impl<
             address_diff_inv,
             rw_counter,
             value,
-            q_write,
-            padding,
+            flag_write,
+            flag_padding,
             storage_key,
             storage_key_diff_inv,
             value_prev,
@@ -608,11 +612,11 @@ impl<
     pub(crate) fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         layouter
             .assign_region(
-                || "global counter table",
+                || "rw_counter table",
                 |mut region| {
                     for idx in 0..=RW_COUNTER_MAX {
                         region.assign_fixed(
-                            || "global counter table",
+                            || format!("rw_counter {}", idx),
                             self.rw_counter_table,
                             idx,
                             || Ok(F::from(idx as u64)),
@@ -629,7 +633,7 @@ impl<
                 |mut region| {
                     for idx in 0..=255 {
                         region.assign_fixed(
-                            || "memory value table",
+                            || format!("memory value {}", idx),
                             self.memory_value_table,
                             idx,
                             || Ok(F::from(idx as u64)),
@@ -646,7 +650,7 @@ impl<
                 |mut region| {
                     for idx in 0..=MEMORY_ADDRESS_MAX {
                         region.assign_fixed(
-                            || "address table with zero",
+                            || format!("address with zero {}", idx),
                             self.memory_address_table_zero,
                             idx,
                             || Ok(F::from(idx as u64)),
@@ -662,7 +666,7 @@ impl<
             |mut region| {
                 for idx in 0..=STACK_ADDRESS_MAX {
                     region.assign_fixed(
-                        || "stack address table with zero",
+                        || format!("stack address with zero {}", idx),
                         self.stack_address_table_zero,
                         idx,
                         || Ok(F::from(idx as u64)),
@@ -703,7 +707,7 @@ impl<
         for (index, oper) in ops.iter().enumerate() {
             let op = oper.op();
             let address = F::from_bytes(&op.address().to_le_bytes()).unwrap();
-            if SANITY_CHECK && address > F::from(MEMORY_ADDRESS_MAX as u64) {
+            if address > F::from(MEMORY_ADDRESS_MAX as u64) {
                 panic!(
                     "memory address out of range {:?} > {}",
                     address, MEMORY_ADDRESS_MAX
@@ -764,7 +768,7 @@ impl<
         let mut offset = MEMORY_ROWS_MAX;
         for (index, oper) in ops.iter().enumerate() {
             let op = oper.op();
-            if SANITY_CHECK && usize::from(*op.address()) > STACK_ADDRESS_MAX {
+            if usize::from(*op.address()) > STACK_ADDRESS_MAX {
                 panic!("stack address out of range");
             }
             let address = F::from(usize::from(*op.address()) as u64);
@@ -888,7 +892,7 @@ impl<
         tag: usize,
     ) -> Result<(), Error> {
         // We pad all remaining rows to avoid the check at the first unused row.
-        // Without padding, (address_cur - address_prev) would not be zero at
+        // Without flag_padding, (address_cur - address_prev) would not be zero at
         // the first unused row and some checks would be triggered.
 
         for i in offset..start_offset + max_rows {
@@ -897,8 +901,8 @@ impl<
             } else {
                 region.assign_fixed(|| "tag", self.tag, i, || Ok(F::from(tag as u64)))?;
             }
-            region.assign_advice(|| "padding", self.padding, i, || Ok(F::one()))?;
-            region.assign_advice(|| "memory", self.q_write, i, || Ok(F::one()))?;
+            region.assign_advice(|| "flag_padding", self.flag_padding, i, || Ok(F::one()))?;
+            region.assign_advice(|| "memory", self.flag_write, i, || Ok(F::one()))?;
         }
 
         Ok(())
@@ -974,7 +978,7 @@ impl<
         region.assign_advice(|| "init address", self.address, offset, || Ok(address))?;
 
         region.assign_advice(
-            || "init global counter",
+            || "init rw_counter",
             self.rw_counter,
             offset,
             || Ok(F::zero()),
@@ -982,7 +986,7 @@ impl<
 
         region.assign_advice(|| "init value", self.value, offset, || Ok(F::zero()))?;
 
-        region.assign_advice(|| "init memory", self.q_write, offset, || Ok(F::one()))?;
+        region.assign_advice(|| "init memory", self.flag_write, offset, || Ok(F::one()))?;
 
         region.assign_fixed(|| "tag", self.tag, offset, || Ok(F::from(tag as u64)))?;
 
@@ -997,7 +1001,7 @@ impl<
         address: F,
         rw_counter: usize,
         value: F,
-        q_write: bool,
+        flag_write: bool,
         tag: usize,
         storage_key: F,
         value_prev: F,
@@ -1011,14 +1015,14 @@ impl<
             }
         };
 
-        if SANITY_CHECK && rw_counter > RW_COUNTER_MAX {
+        if rw_counter > RW_COUNTER_MAX {
             panic!("rw_counter out of range");
         }
         let rw_counter = {
             let field_elem = F::from(rw_counter as u64);
 
             let cell = region.assign_advice(
-                || "global counter",
+                || "rw_counter",
                 self.rw_counter,
                 offset,
                 || Ok(field_elem),
@@ -1071,15 +1075,19 @@ impl<
             }
         };
 
-        let q_write = {
-            let field_elem = F::from(q_write as u64);
-            let cell =
-                region.assign_advice(|| "q_write", self.q_write, offset, || Ok(field_elem))?;
+        let flag_write = {
+            let field_elem = F::from(flag_write as u64);
+            let cell = region.assign_advice(
+                || "flag_write",
+                self.flag_write,
+                offset,
+                || Ok(field_elem),
+            )?;
 
             Variable::<bool, F> {
                 cell,
                 field_elem: Some(field_elem),
-                value: Some(q_write),
+                value: Some(flag_write),
             }
         };
 
@@ -1098,7 +1106,7 @@ impl<
         Ok(BusMapping {
             rw_counter,
             tag,
-            q_write,
+            flag_write,
             address,
             value,
             storage_key,
@@ -1111,7 +1119,6 @@ impl<
 #[derive(Default)]
 pub struct StateCircuit<
     F: FieldExt,
-    const SANITY_CHECK: bool,
     const RW_COUNTER_MAX: usize,
     const MEMORY_ROWS_MAX: usize,
     const MEMORY_ADDRESS_MAX: usize,
@@ -1131,7 +1138,6 @@ pub struct StateCircuit<
 
 impl<
         F: FieldExt,
-        const SANITY_CHECK: bool,
         const RW_COUNTER_MAX: usize,
         const MEMORY_ROWS_MAX: usize,
         const MEMORY_ADDRESS_MAX: usize,
@@ -1141,7 +1147,6 @@ impl<
     >
     StateCircuit<
         F,
-        SANITY_CHECK,
         RW_COUNTER_MAX,
         MEMORY_ROWS_MAX,
         MEMORY_ADDRESS_MAX,
@@ -1168,7 +1173,6 @@ impl<
 
 impl<
         F: FieldExt,
-        const SANITY_CHECK: bool,
         const RW_COUNTER_MAX: usize,
         const MEMORY_ROWS_MAX: usize,
         const MEMORY_ADDRESS_MAX: usize,
@@ -1178,7 +1182,6 @@ impl<
     > Circuit<F>
     for StateCircuit<
         F,
-        SANITY_CHECK,
         RW_COUNTER_MAX,
         MEMORY_ROWS_MAX,
         MEMORY_ADDRESS_MAX,
@@ -1189,7 +1192,6 @@ impl<
 {
     type Config = Config<
         F,
-        SANITY_CHECK,
         RW_COUNTER_MAX,
         MEMORY_ROWS_MAX,
         MEMORY_ADDRESS_MAX,
@@ -1748,7 +1750,7 @@ mod state_circuit_tests {
             RWCounter::from(297),
             StorageOp::new(
                 RW::WRITE,
-                // Global counter goes down, but it doesn't fail because
+                // rw_counter goes down, but it doesn't fail because
                 // the storage key is not the same as in the previous row.
                 address!("0x0000000000000000000000000000000000000001"),
                 Word::from(0x41),
@@ -1761,7 +1763,7 @@ mod state_circuit_tests {
             RWCounter::from(296),
             StorageOp::new(
                 RW::WRITE,
-                // Global counter goes down, but it doesn't fail because the
+                // rw_counter goes down, but it doesn't fail because the
                 // address is not the same as in the previous row (while the
                 // storage key is).
                 address!("0x0000000000000000000000000000000000000002"),
