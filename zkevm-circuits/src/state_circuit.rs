@@ -1,4 +1,4 @@
 //! The state circuit implementation.
 
 pub(crate) mod state;
-pub use state::StateCircuit;
+pub use state::{StateCircuit, StateCircuitParams};

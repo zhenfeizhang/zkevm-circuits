@@ -5,7 +5,10 @@ use halo2::{
 };
 use pairing::bn256::Fr;
 
-use crate::{evm_circuit::table::FixedTableTag, state_circuit::StateCircuit};
+use crate::{
+    evm_circuit::table::FixedTableTag,
+    state_circuit::{StateCircuit, StateCircuitParams},
+};
 
 pub enum FixedTableConfig {
     Incomplete,
@@ -86,7 +89,17 @@ pub fn run_test_circuits_with_config(
     // circuit must be same
     if config.enable_state_circuit_test {
         let block_for_state_circuit = builder.block;
-        let state_circuit = StateCircuit::<Fr, true, 2000, 100, 100, 100, 1023, 100> {
+        let params = StateCircuitParams {
+            sanity_check: true,
+            rw_counter_max: 2000,
+            memory_rows_max: 100,
+            memory_address_max: 100,
+            stack_rows_max: 100,
+            stack_address_max: 1023,
+            storage_rows_max: 100,
+        };
+        let state_circuit = StateCircuit::<Fr, 100, 1023> {
+            params,
             randomness: config.randomness,
             memory_ops: block_for_state_circuit.container.sorted_memory(),
             stack_ops: block_for_state_circuit.container.sorted_stack(),
