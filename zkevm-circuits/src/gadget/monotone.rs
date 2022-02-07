@@ -13,7 +13,9 @@ pub(crate) struct MonotoneConfig {
 }
 
 /// MonotoneChip helps to check if an advice column is monotonically increasing
-/// within a range. With strict enabled, it disallows equality of two cell.
+/// within the range `0..=RANGE`. With `STRICT` enabled, it disallows equality
+/// of two cell.  With `INCR` disabled, the chip checks for monotonically
+/// decreasing.
 pub(crate) struct MonotoneChip<F, const RANGE: usize, const INCR: bool, const STRICT: bool> {
     config: MonotoneConfig,
     _marker: PhantomData<F>,

@@ -26,6 +26,9 @@ pub(crate) struct IsZeroConfig<F> {
     pub is_zero_expression: Expression<F>,
 }
 
+/// This chip builds an expression `is_zero_expression` that avaluates to 1 if
+/// `value` is zero and 0 otherwise.  When `value` != 0, it requires a valid
+/// inverse of `value` as input.  Assumes that `q_enable` is binary.
 pub(crate) struct IsZeroChip<F> {
     config: IsZeroConfig<F>,
 }
@@ -43,6 +46,7 @@ impl<F: FieldExt> IsZeroChip<F> {
         #[rustfmt::skip]
         // Truth table of iz_zero gate:
         // +----+-------+-----------+-----------------------+---------------------------------+-------------------------------------+
+        // |    |       |           | is_zero_expression =  | poly1 =                         | poly2 =                             |
         // | ok | value | value_inv | 1 - value ⋅ value_inv | value ⋅ (1 - value ⋅ value_inv) | value_inv ⋅ (1 - value ⋅ value_inv) |
         // +----+-------+-----------+-----------------------+---------------------------------+-------------------------------------+
         // | V  | 0     | 0         | 1                     | 0                               | 0                                   |
@@ -67,8 +71,7 @@ impl<F: FieldExt> IsZeroChip<F> {
             // value_inv ⋅ (1 - value ⋅ value_inv)
             let poly2 = value_inv * is_zero_expression.clone();
 
-            array::IntoIter::new([poly1, poly2])
-                .map(move |poly| q_enable.clone() * poly)
+            array::IntoIter::new([poly1, poly2]).map(move |poly| q_enable.clone() * poly)
         });
 
         IsZeroConfig::<F> {
