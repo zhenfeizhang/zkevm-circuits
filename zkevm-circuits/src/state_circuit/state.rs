@@ -145,6 +145,15 @@ pub(crate) struct BusMapping<F: FieldExt> {
     value_prev: Variable<F, F>,
 }
 
+pub struct StateCircuitParams {
+    pub rw_counter_max: usize,
+    pub memory_rows_max: usize,
+    pub memory_addr_max: usize,
+    pub stack_rows_max: usize,
+    pub stack_addr_max: usize,
+    pub storage_rows_max: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct Config<
     F: FieldExt,
@@ -342,9 +351,6 @@ impl<
             // value_cur
             let value_prev = meta.query_advice(value, Rotation::prev());
             let flag_read = one.clone() - flag_write;
-
-            let tag = meta.query_fixed(tag, Rotation::cur());
-            let flag_padding = meta.query_advice(flag_padding, Rotation::cur());
 
             vec![
                 q_memory_not_first.clone()
