@@ -10,7 +10,7 @@ use crate::{
 };
 use crate::{gates::mixing::MixingConfig, keccak_arith::*};
 use halo2_proofs::{
-    circuit::Region,
+    circuit::{Cell, Layouter, Region},
     plonk::{Advice, Column, ConstraintSystem, Error, Selector},
     poly::Rotation,
 };
@@ -41,7 +41,7 @@ impl<F: FieldExt> KeccakFConfig<F> {
         let state = (0..25)
             .map(|_| {
                 let column = meta.advice_column();
-                meta.enable_equality(column.into());
+                meta.enable_equality(column);
                 column
             })
             .collect_vec()
@@ -51,7 +51,7 @@ impl<F: FieldExt> KeccakFConfig<F> {
         // Allocate space for the Advice column that activates the base
         // conversion during the `PERMUTATION - 1` rounds.
         let _is_mixing_flag = meta.advice_column();
-        meta.enable_equality(_is_mixing_flag.into());
+        meta.enable_equality(_is_mixing_flag);
 
         // theta
         let theta_config = ThetaConfig::configure(meta.selector(), meta, state);
@@ -67,13 +67,13 @@ impl<F: FieldExt> KeccakFConfig<F> {
         // Allocate space for the round constants in base-9 which is an
         // instance column
         let round_ctant_b9 = meta.advice_column();
-        meta.enable_equality(round_ctant_b9.into());
+        meta.enable_equality(round_ctant_b9);
         let round_constants_b9 = meta.instance_column();
 
         // Allocate space for the round constants in base-13 which is an
         // instance column
         let round_ctant_b13 = meta.advice_column();
-        meta.enable_equality(round_ctant_b13.into());
+        meta.enable_equality(round_ctant_b13);
         let round_constants_b13 = meta.instance_column();
 
         // Iotab9
@@ -82,7 +82,7 @@ impl<F: FieldExt> KeccakFConfig<F> {
 
         // Allocate space for the activation flag of the base_conversion.
         let _base_conv_activator = meta.advice_column();
-        meta.enable_equality(_base_conv_activator.into());
+        meta.enable_equality(_base_conv_activator);
         // Base conversion config.
         let base_info = table.get_base_info(false);
         let base_conversion_config =
@@ -207,8 +207,11 @@ impl<F: FieldExt> KeccakFConfig<F> {
                     },
                 )?;
 
-                self.base_conversion_config
-                    .assign_region(layouter, state, activation_flag)?
+                self.base_conversion_config.assign_region(
+                    layouter,
+                    state,
+                    (activation_flag.0.cell(), activation_flag.1),
+                )?
             }
         }
 
@@ -259,7 +262,7 @@ impl<F: FieldExt> KeccakFConfig<F> {
                             1,
                             || Ok(*lane),
                         )?;
-                        out_vec.push((out_cell, *lane));
+                        out_vec.push((out_cell.cell(), *lane));
                     }
                     out_vec.try_into().unwrap()
                 };
@@ -285,7 +288,7 @@ impl<F: FieldExt> KeccakFConfig<F> {
                 || Ok(*value),
             )?;
 
-            region.constrain_equal(*cell, new_cell)?;
+            region.constrain_equal(*cell, new_cell.cell())?;
         }
 
         Ok(())
@@ -297,9 +300,9 @@ mod tests {
     use super::*;
     use crate::common::{State, NEXT_INPUTS_LANES, ROUND_CONSTANTS};
     use crate::gates::gate_helpers::*;
-    use halo2::circuit::Layouter;
-    use halo2::plonk::{ConstraintSystem, Error};
-    use halo2::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
+    use halo2_proofs::circuit::Layouter;
+    use halo2_proofs::plonk::{ConstraintSystem, Error};
+    use halo2_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
     use pairing::bn256::Fr as Fp;
     use pretty_assertions::assert_eq;
     use std::convert::TryInto;
@@ -369,7 +372,7 @@ mod tests {
                                     offset,
                                     || Ok(*val),
                                 )?;
-                                state.push((cell, *val))
+                                state.push((cell.cell(), *val))
                             }
                             state.try_into().unwrap()
                         };

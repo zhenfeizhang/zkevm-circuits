@@ -1,5 +1,5 @@
 use crate::common::State;
-use halo2::circuit::Cell;
+use halo2_proofs::circuit::Cell;
 use itertools::Itertools;
 use num_bigint::BigUint;
 use num_traits::Zero;

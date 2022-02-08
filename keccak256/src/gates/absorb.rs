@@ -119,9 +119,9 @@ impl<F: FieldExt> AbsorbConfig<F> {
             offset,
             || Ok(flag.1),
         )?;
-        region.constrain_equal(flag.0, obtained_cell)?;
+        region.constrain_equal(flag.0, obtained_cell.cell())?;
 
-        Ok((obtained_cell, flag.1))
+        Ok((obtained_cell.cell(), flag.1))
     }
 
     /// Doc this

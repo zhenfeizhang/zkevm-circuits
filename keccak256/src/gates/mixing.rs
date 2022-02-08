@@ -106,7 +106,7 @@ impl<F: FieldExt> MixingConfig<F> {
         let out_mixing: [Column<Advice>; 25] = (0..25)
             .map(|_| {
                 let column = meta.advice_column();
-                meta.enable_equality(column.into());
+                meta.enable_equality(column);
                 column
             })
             .collect::<Vec<_>>()
@@ -163,7 +163,7 @@ impl<F: FieldExt> MixingConfig<F> {
                     0,
                     || Ok(F::from(flag_bool as u64)),
                 )?;
-                let flag = (cell, F::from(flag_bool as u64));
+                let flag = (cell.cell(), F::from(flag_bool as u64));
 
                 // Witness negated `is_mixing` flag
                 let cell = region.assign_advice(
@@ -173,7 +173,7 @@ impl<F: FieldExt> MixingConfig<F> {
                     || Ok(F::from(!flag_bool as u64)),
                 )?;
 
-                let negated_flag = (cell, F::from(flag_bool as u64));
+                let negated_flag = (cell.cell(), F::from(flag_bool as u64));
                 Ok((flag, negated_flag))
             },
         )
@@ -203,7 +203,7 @@ impl<F: FieldExt> MixingConfig<F> {
                     0,
                     || Ok(F::from(flag_bool as u64)),
                 )?;
-                region.constrain_equal(_flag_cell, flag.0)?;
+                region.constrain_equal(_flag_cell.cell(), flag.0)?;
 
                 let _neg_flag_cell = region.assign_advice(
                     || "witness is_mixing",
@@ -211,7 +211,7 @@ impl<F: FieldExt> MixingConfig<F> {
                     1,
                     || Ok(F::from(!flag_bool as u64)),
                 )?;
-                region.constrain_equal(_neg_flag_cell, negated_flag.0)?;
+                region.constrain_equal(_neg_flag_cell.cell(), negated_flag.0)?;
 
                 // TODO: Can just constraint directly without out_state passed
                 self.copy_state(
@@ -239,7 +239,7 @@ impl<F: FieldExt> MixingConfig<F> {
                             0,
                             || Ok(*lane),
                         )?;
-                        out_vec.push((out_cell, *lane));
+                        out_vec.push((out_cell.cell(), *lane));
                     }
                     out_vec.try_into().unwrap()
                 };
@@ -362,7 +362,7 @@ impl<F: FieldExt> MixingConfig<F> {
                 || Ok(*out_circ_value),
             )?;
 
-            region.constrain_equal(in_cell, new_cell)?;
+            region.constrain_equal(in_cell, new_cell.cell())?;
         }
 
         Ok(())
@@ -377,6 +377,7 @@ mod tests {
     use halo2_proofs::circuit::Layouter;
     use halo2_proofs::plonk::{ConstraintSystem, Error};
     use halo2_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
+    use itertools::Itertools;
     use pairing::bn256::Fr as Fp;
     use pretty_assertions::assert_eq;
     use std::convert::TryInto;
@@ -421,13 +422,13 @@ mod tests {
                 // Allocate space for the round constants in base-9 which is an
                 // instance column
                 let round_ctant_b9 = meta.advice_column();
-                meta.enable_equality(round_ctant_b9.into());
+                meta.enable_equality(round_ctant_b9);
                 let round_constants_b9 = meta.instance_column();
 
                 // Allocate space for the round constants in base-13 which is an
                 // instance column
                 let round_ctant_b13 = meta.advice_column();
-                meta.enable_equality(round_ctant_b13.into());
+                meta.enable_equality(round_ctant_b13);
                 let round_constants_b13 = meta.instance_column();
 
                 MyConfig {

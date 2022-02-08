@@ -78,7 +78,7 @@ impl<F: FieldExt> XiConfig<F> {
                         offset,
                         || Ok(lane.1),
                     )?;
-                    region.constrain_equal(lane.0, obtained_cell)?;
+                    region.constrain_equal(lane.0, obtained_cell.cell())?;
                 }
 
                 let mut out_vec: Vec<(Cell, F)> = vec![];
@@ -90,7 +90,7 @@ impl<F: FieldExt> XiConfig<F> {
                             offset + 1,
                             || Ok(*lane),
                         )?;
-                        out_vec.push((out_cell, *lane));
+                        out_vec.push((out_cell.cell(), *lane));
                     }
                     out_vec.try_into().unwrap()
                 };
