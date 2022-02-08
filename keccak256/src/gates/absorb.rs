@@ -1,9 +1,11 @@
 use crate::arith_helpers::*;
 use crate::common::*;
-use halo2::circuit::Cell;
-use halo2::circuit::Layouter;
-use halo2::circuit::Region;
-use halo2::{
+use crate::gates::gate_helpers::biguint_to_f;
+use crate::keccak_arith::*;
+use halo2_proofs::circuit::Cell;
+use halo2_proofs::circuit::Layouter;
+use halo2_proofs::circuit::Region;
+use halo2_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
     poly::Rotation,
 };
@@ -42,7 +44,7 @@ impl<F: FieldExt> AbsorbConfig<F> {
         let q_mixing = meta.selector();
         state
             .iter()
-            .for_each(|column| meta.enable_equality((*column).into()));
+            .for_each(|column| meta.enable_equality(*column));
 
         meta.create_gate("absorb", |meta| {
             // We do a trick which consists on multiplying an internal selector
@@ -145,15 +147,29 @@ impl<F: FieldExt> AbsorbConfig<F> {
                         || Ok(*value),
                     )?;
 
-                    region.constrain_equal(*cell, new_cell)?;
+                    region.constrain_equal(*cell, new_cell.cell())?;
                 }
 
                 offset += 1;
                 // Enable `q_mixing` at `offset + 1`
                 self.q_mixing.enable(&mut region, offset)?;
-
-                // Assign `next_inputs` and flag.
-                let flag = self.assign_next_inp_and_flag(&mut region, offset, flag, next_input)?;
+                // Assign next_mixing at offset + 1
+                for (idx, lane) in next_input.iter().enumerate() {
+                    region.assign_advice(
+                        || format!("assign next_input {}", idx),
+                        self.state[idx],
+                        offset,
+                        || Ok(*lane),
+                    )?;
+                }
+                // Assign flag at last column(17th) of the offset + 1 row.
+                let obtained_cell = region.assign_advice(
+                    || format!("assign next_input {}", NEXT_INPUTS_LANES),
+                    self.state[NEXT_INPUTS_LANES],
+                    offset,
+                    || Ok(flag.1),
+                )?;
+                region.constrain_equal(flag.0, obtained_cell.cell())?;
 
                 offset += 1;
                 // Assign out_state at offset + 2
@@ -165,13 +181,13 @@ impl<F: FieldExt> AbsorbConfig<F> {
                         offset,
                         || Ok(*lane),
                     )?;
-                    state.push((cell, *lane));
+                    state.push((cell.cell(), *lane));
                 }
                 let out_state: [(Cell, F); 25] = state
                     .try_into()
                     .expect("Unexpected into_slice conversion err");
 
-                Ok((out_state, flag))
+                Ok((out_state, (obtained_cell.cell(), flag.1)))
             },
         )
     }
@@ -181,11 +197,9 @@ impl<F: FieldExt> AbsorbConfig<F> {
 mod tests {
     use super::*;
     use crate::common::State;
-    use crate::keccak_arith::KeccakFArith;
-    use halo2::circuit::Layouter;
-    use halo2::plonk::{Advice, Column, ConstraintSystem, Error};
-    use halo2::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
-    use itertools::Itertools;
+    use halo2_proofs::circuit::Layouter;
+    use halo2_proofs::plonk::{Advice, Column, ConstraintSystem, Error};
+    use halo2_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
     use pairing::bn256::Fr as Fp;
     use pretty_assertions::assert_eq;
     use std::convert::TryInto;
@@ -213,7 +227,7 @@ mod tests {
                 let state: [Column<Advice>; 25] = (0..25)
                     .map(|_| {
                         let column = meta.advice_column();
-                        meta.enable_equality(column.into());
+                        meta.enable_equality(column);
                         column
                     })
                     .collect::<Vec<_>>()
@@ -239,7 +253,7 @@ mod tests {
                             offset,
                             || Ok(val),
                         )?;
-                        Ok((cell, val))
+                        Ok((cell.cell(), val))
                     },
                 )?;
 
@@ -255,7 +269,7 @@ mod tests {
                                 0,
                                 || Ok(*val),
                             )?;
-                            state.push((cell, *val))
+                            state.push((cell.cell(), *val))
                         }
 
                         Ok(state.try_into().unwrap())

@@ -9,8 +9,8 @@ use crate::{
     gates::tables::{Base13toBase9TableConfig, SpecialChunkTableConfig},
 };
 use crate::{gates::mixing::MixingConfig, keccak_arith::*};
-use halo2::{
-    circuit::{Cell, Layouter, Region},
+use halo2_proofs::{
+    circuit::Region,
     plonk::{Advice, Column, ConstraintSystem, Error, Selector},
     poly::Rotation,
 };

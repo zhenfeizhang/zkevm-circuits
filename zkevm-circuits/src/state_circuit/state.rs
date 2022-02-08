@@ -8,7 +8,7 @@ use crate::{
 };
 use bus_mapping::operation::{MemoryOp, Operation, StackOp, StorageOp};
 use eth_types::{ToLittleEndian, ToScalar};
-use halo2::{
+use halo2_proofs::{
     circuit::{Layouter, Region, SimpleFloorPlanner},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Expression, Fixed, VirtualCells},
     poly::Rotation,
@@ -1024,7 +1024,7 @@ impl<
         let address = {
             let cell = region.assign_advice(|| "address", self.address, offset, || Ok(address))?;
             Variable::<F, F> {
-                cell,
+                cell: cell.cell(),
                 field_elem: Some(address),
                 value: Some(address),
             }
@@ -1044,7 +1044,7 @@ impl<
             )?;
 
             Variable::<usize, F> {
-                cell,
+                cell: cell.cell(),
                 field_elem: Some(field_elem),
                 value: Some(global_counter),
             }
@@ -1054,7 +1054,7 @@ impl<
             let cell = region.assign_advice(|| "value", self.value, offset, || Ok(value))?;
 
             Variable::<F, F> {
-                cell,
+                cell: cell.cell(),
                 field_elem: Some(value),
                 value: Some(value),
             }
@@ -1069,7 +1069,7 @@ impl<
             )?;
 
             Variable::<F, F> {
-                cell,
+                cell: cell.cell(),
                 field_elem: Some(storage_key),
                 value: Some(storage_key),
             }
@@ -1084,7 +1084,7 @@ impl<
             )?;
 
             Variable::<F, F> {
-                cell,
+                cell: cell.cell(),
                 field_elem: Some(value_prev),
                 value: Some(value_prev),
             }
@@ -1095,7 +1095,7 @@ impl<
             let cell = region.assign_advice(|| "flag", self.flag, offset, || Ok(field_elem))?;
 
             Variable::<bool, F> {
-                cell,
+                cell: cell.cell(),
                 field_elem: Some(field_elem),
                 value: Some(flag),
             }
@@ -1111,7 +1111,7 @@ impl<
                 || Ok(F::from(target as u64)),
             )?;
             Variable::<usize, F> {
-                cell,
+                cell: cell.cell(),
                 field_elem,
                 value,
             }
@@ -1252,8 +1252,8 @@ mod tests {
     use bus_mapping::operation::{MemoryOp, Operation, RWCounter, StackOp, StorageOp, RW};
     use eth_types::evm_types::{MemoryAddress, StackAddress};
     use eth_types::{address, bytecode, Word};
-    use halo2::arithmetic::BaseExt;
-    use halo2::dev::{MockProver, VerifyFailure::ConstraintNotSatisfied, VerifyFailure::Lookup};
+    use halo2_proofs::arithmetic::BaseExt;
+    use halo2_proofs::dev::MockProver;
     use pairing::bn256::Fr;
 
     macro_rules! test_state_circuit {
@@ -1300,23 +1300,6 @@ mod tests {
             let prover = MockProver::<Fr>::run($k, &circuit, vec![]).unwrap();
             assert!(prover.verify().is_err());
         }};
-    }
-
-    fn constraint_not_satisfied(
-        row: usize,
-        gate_index: usize,
-        gate_name: &'static str,
-        index: usize,
-    ) -> halo2::dev::VerifyFailure {
-        ConstraintNotSatisfied {
-            constraint: ((gate_index, gate_name).into(), index, "").into(),
-            row,
-            cell_values: vec![],
-        }
-    }
-
-    fn lookup_fail(row: usize, lookup_index: usize) -> halo2::dev::VerifyFailure {
-        Lookup { lookup_index, row }
     }
 
     #[test]

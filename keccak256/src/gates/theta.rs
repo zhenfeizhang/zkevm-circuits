@@ -1,5 +1,5 @@
 use crate::arith_helpers::*;
-use halo2::{
+use halo2_proofs::{
     circuit::{Cell, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
     poly::Rotation,
@@ -76,7 +76,7 @@ impl<F: FieldExt> ThetaConfig<F> {
                         offset,
                         || Ok(lane.1),
                     )?;
-                    region.constrain_equal(lane.0, obtained_cell)?;
+                    region.constrain_equal(lane.0, obtained_cell.cell())?;
                 }
 
                 let mut out_vec: Vec<(Cell, F)> = vec![];
@@ -88,7 +88,7 @@ impl<F: FieldExt> ThetaConfig<F> {
                             offset + 1,
                             || Ok(*lane),
                         )?;
-                        out_vec.push((out_cell, *lane));
+                        out_vec.push((out_cell.cell(), *lane));
                     }
                     out_vec.try_into().unwrap()
                 };
@@ -104,7 +104,7 @@ mod tests {
     use crate::common::*;
     use crate::gates::gate_helpers::biguint_to_f;
     use crate::keccak_arith::*;
-    use halo2::{
+    use halo2_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
@@ -136,7 +136,7 @@ mod tests {
                 let state: [Column<Advice>; 25] = (0..25)
                     .map(|_| {
                         let column = meta.advice_column();
-                        meta.enable_equality(column.into());
+                        meta.enable_equality(column);
                         column
                     })
                     .collect::<Vec<_>>()
@@ -165,7 +165,7 @@ mod tests {
                                     offset,
                                     || Ok(*val),
                                 )?;
-                                state.push((cell, *val))
+                                state.push((cell.cell(), *val))
                             }
                             state.try_into().unwrap()
                         };

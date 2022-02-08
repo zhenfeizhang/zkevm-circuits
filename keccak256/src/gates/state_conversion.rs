@@ -1,4 +1,4 @@
-use halo2::{
+use halo2_proofs::{
     circuit::{Cell, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error},
 };
@@ -23,7 +23,7 @@ impl<F: FieldExt> StateBaseConversion<F> {
         bi: BaseInfo<F>,
         flag: Column<Advice>,
     ) -> Self {
-        meta.enable_equality(flag.into());
+        meta.enable_equality(flag);
         let bccs: [BaseConversionConfig<F>; 25] = state
             .iter()
             .map(|&lane| BaseConversionConfig::configure(meta, bi.clone(), lane, flag))
@@ -60,7 +60,7 @@ mod tests {
     use super::*;
     use crate::arith_helpers::convert_b2_to_b13;
     use crate::gates::{gate_helpers::biguint_to_f, tables::FromBinaryTableConfig};
-    use halo2::{
+    use halo2_proofs::{
         circuit::{Layouter, SimpleFloorPlanner},
         dev::MockProver,
         plonk::{Advice, Circuit, Column, ConstraintSystem, Error},
@@ -123,7 +123,7 @@ mod tests {
                                         || Ok(value),
                                     )
                                     .unwrap();
-                                (cell, value)
+                                (cell.cell(), value)
                             })
                             .collect::<Vec<_>>()
                             .try_into()
@@ -135,7 +135,7 @@ mod tests {
                 )?;
                 let output_state =
                     self.conversion
-                        .assign_region(layouter, state, (flag, flag_value))?;
+                        .assign_region(layouter, state, (flag.cell(), flag_value))?;
                 let output_state: [F; 25] = output_state
                     .iter()
                     .map(|&(_, value)| value)

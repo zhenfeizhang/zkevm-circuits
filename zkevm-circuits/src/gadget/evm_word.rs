@@ -8,7 +8,7 @@
 
 use crate::gadget::Variable;
 use digest::{FixedOutput, Input};
-use halo2::{
+use halo2_proofs::{
     circuit::Region,
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector},
     poly::Rotation,
@@ -18,7 +18,7 @@ use sha3::{Digest, Keccak256};
 use std::convert::TryInto;
 
 #[cfg(test)]
-use halo2::circuit::Layouter;
+use halo2_proofs::circuit::Layouter;
 
 // r = hash([0, 1, ..., 255])
 // TODO: Move into crate-level `constants` file.
@@ -153,7 +153,7 @@ impl<F: FieldExt> WordConfig<F> {
                 || byte_field_elem.ok_or(Error::Synthesis),
             )?;
 
-            bytes.push(Variable::new(cell, byte_field_elem, *byte));
+            bytes.push(Variable::new(cell.cell(), byte_field_elem, *byte));
         }
 
         Ok(Word(bytes.try_into().unwrap()))
@@ -163,11 +163,12 @@ impl<F: FieldExt> WordConfig<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use halo2::{
+    use crate::test_util::lookup_fail;
+    use halo2_proofs::{
         arithmetic::Field,
         arithmetic::FieldExt,
         circuit::SimpleFloorPlanner,
-        dev::{MockProver, VerifyFailure},
+        dev::MockProver,
         plonk::{Circuit, Instance},
     };
     use pairing::bn256::Fr as Fp;
@@ -264,10 +265,7 @@ mod tests {
             let prover = MockProver::<Fp>::run(9, &circuit, vec![vec![]]).unwrap();
             assert_eq!(
                 prover.verify(),
-                Err(vec![VerifyFailure::Lookup {
-                    lookup_index: 32,
-                    row: 0
-                }])
+                Err(vec![lookup_fail(1, "assign word".to_string(), 0, 32)])
             );
 
             // Calculate word commitment and use it as public input.

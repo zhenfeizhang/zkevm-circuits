@@ -6,10 +6,10 @@ use super::{
 };
 use crate::common::*;
 use crate::keccak_arith::KeccakFArith;
-use halo2::circuit::Region;
-use halo2::plonk::{Expression, Instance, Selector};
-use halo2::poly::Rotation;
-use halo2::{
+use halo2_proofs::circuit::Region;
+use halo2_proofs::plonk::{Expression, Instance, Selector};
+use halo2_proofs::poly::Rotation;
+use halo2_proofs::{
     circuit::{Cell, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error},
 };
@@ -41,7 +41,7 @@ impl<F: FieldExt> MixingConfig<F> {
         // Allocate space for the flag column from which we will copy to all of
         // the sub-configs.
         let flag = meta.advice_column();
-        meta.enable_equality(flag.into());
+        meta.enable_equality(flag);
 
         // Generate a selector that will always be active to avoid the
         // PoisonedConstraint err due to no selectors being used in a
@@ -81,7 +81,7 @@ impl<F: FieldExt> MixingConfig<F> {
         let state: [Column<Advice>; 25] = (0..25)
             .map(|_| {
                 let column = meta.advice_column();
-                meta.enable_equality(column.into());
+                meta.enable_equality(column);
                 column
             })
             .collect::<Vec<_>>()
@@ -93,7 +93,7 @@ impl<F: FieldExt> MixingConfig<F> {
             IotaB9Config::configure(meta, state, round_ctant_b9, round_constants_b9);
         // We mix -> Flag = true
         let absorb_config = AbsorbConfig::configure(meta, state);
-
+        meta.enable_equality(flag);
         let base_info = table.get_base_info(false);
         let base_conv_config = StateBaseConversion::configure(meta, state, base_info, flag);
 
@@ -258,8 +258,23 @@ impl<F: FieldExt> MixingConfig<F> {
         next_mixing: Option<[F; NEXT_INPUTS_LANES]>,
         absolute_row: usize,
     ) -> Result<[(Cell, F); 25], Error> {
-        // Enforce flag constraints and witness them.
-        let (flag, negated_flag) = self.enforce_flag_consistency(layouter, flag_bool)?;
+        // Witness the mixing flag.
+        let val: F = (flag_bool as u64).into();
+        let flag_cell = layouter.assign_region(
+            || "Mixing witnessing",
+            |mut region| {
+                let offset: usize = 0;
+                // Witness `is_mixing` flag.
+                let cell =
+                    region.assign_advice(|| "witness is_mixing", self.flag, offset, || Ok(val))?;
+                Ok((cell.cell(), val))
+            },
+        )?;
+
+        // If we mix:
+        let mix_res =
+            self.iota_b9_config
+                .last_round(layouter, in_state, out_state, absolute_row, flag_cell);
 
         // If we don't mix:
         // IotaB9
@@ -274,7 +289,7 @@ impl<F: FieldExt> MixingConfig<F> {
                 in_state,
                 out_state_iota_b9,
                 absolute_row,
-                flag,
+                flag_cell,
             )
         }?;
 
@@ -289,13 +304,13 @@ impl<F: FieldExt> MixingConfig<F> {
                 &state_to_state_bigint::<F, NEXT_INPUTS_LANES>(next_mixing.unwrap_or_default()),
             )),
             next_mixing.unwrap_or_default(),
-            flag,
+            flag_cell,
         )?;
 
         // Base conversion assign
         let base_conv_cells =
             self.base_conv_config
-                .assign_region(layouter, out_state_absorb_cells, flag)?;
+                .assign_region(layouter, out_state_absorb_cells, flag_cell)?;
 
         // IotaB13
         let mix_res = {
@@ -309,15 +324,15 @@ impl<F: FieldExt> MixingConfig<F> {
                 base_conv_cells,
                 out_iota_b13_state,
                 absolute_row,
-                flag,
+                flag_cell,
             )
         }?;
 
         let mixing_res = self.assign_out_mixing_states(
             layouter,
             flag_bool,
-            flag,
-            negated_flag,
+            flag_cell,
+            flag_cell,
             mix_res,
             non_mix_res,
             out_state,
@@ -359,10 +374,9 @@ mod tests {
     use super::*;
     use crate::common::{State, PERMUTATION, ROUND_CONSTANTS};
     use crate::gates::gate_helpers::biguint_to_f;
-    use halo2::circuit::Layouter;
-    use halo2::plonk::{ConstraintSystem, Error};
-    use halo2::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
-    use itertools::Itertools;
+    use halo2_proofs::circuit::Layouter;
+    use halo2_proofs::plonk::{ConstraintSystem, Error};
+    use halo2_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
     use pairing::bn256::Fr as Fp;
     use pretty_assertions::assert_eq;
     use std::convert::TryInto;
@@ -451,7 +465,7 @@ mod tests {
                                     offset,
                                     || Ok(*val),
                                 )?;
-                                state.push((cell, *val))
+                                state.push((cell.cell(), *val))
                             }
                             state.try_into().unwrap()
                         };
