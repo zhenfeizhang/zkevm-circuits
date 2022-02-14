@@ -18,22 +18,8 @@ struct KeccakRoundTestCircuit<F> {
     is_mixing: bool,
 }
 
-#[derive(Clone)]
-struct MyConfig<F: FieldExt> {
-    keccak_conf: KeccakFConfig<F>,
-    table: FromBase9TableConfig<F>,
-}
-
-impl<F: FieldExt> MyConfig<F> {
-    pub fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
-        self.keccak_conf.load(layouter)?;
-        self.table.load(layouter)?;
-        Ok(())
-    }
-}
-
 impl<F: FieldExt> Circuit<F> for KeccakRoundTestCircuit<F> {
-    type Config = MyConfig<F>;
+    type Config = KeccakFConfig<F>;
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
@@ -41,11 +27,7 @@ impl<F: FieldExt> Circuit<F> for KeccakRoundTestCircuit<F> {
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-        let table = FromBase9TableConfig::configure(meta);
-        MyConfig {
-            keccak_conf: KeccakFConfig::configure(meta, table.clone()),
-            table,
-        }
+        Self::Config::configure(meta)
     }
 
     fn synthesize(
@@ -66,7 +48,7 @@ impl<F: FieldExt> Circuit<F> for KeccakRoundTestCircuit<F> {
                     for (idx, val) in self.in_state.iter().enumerate() {
                         let cell = region.assign_advice(
                             || "witness input state",
-                            config.keccak_conf.state[idx],
+                            config.state[idx],
                             offset,
                             || Ok(*val),
                         )?;
@@ -78,7 +60,7 @@ impl<F: FieldExt> Circuit<F> for KeccakRoundTestCircuit<F> {
             },
         )?;
 
-        config.keccak_conf.assign_all(
+        config.assign_all(
             &mut layouter,
             in_state,
             self.out_state,
@@ -174,7 +156,7 @@ mod tests {
             .parse()
             .expect("Cannot parse DEGREE env var as u32");
 
-        let mut rng = XorShiftRng::from_seed([
+        let rng = XorShiftRng::from_seed([
             0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
             0xbc, 0xe5,
         ]);

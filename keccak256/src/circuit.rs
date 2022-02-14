@@ -6,7 +6,6 @@ use super::gates::{
 use crate::{
     arith_helpers::*,
     common::{NEXT_INPUTS_LANES, PERMUTATION, ROUND_CONSTANTS},
-    gates::tables::{Base13toBase9TableConfig, SpecialChunkTableConfig},
 };
 use crate::{gates::mixing::MixingConfig, keccak_arith::*};
 use halo2_proofs::{
@@ -24,20 +23,17 @@ pub struct KeccakFConfig<F: FieldExt> {
     rho_config: RhoConfig<F>,
     xi_config: XiConfig<F>,
     iota_b9_config: IotaB9Config<F>,
+    from_b9_table: FromBase9TableConfig<F>,
     base_conversion_config: StateBaseConversion<F>,
     mixing_config: MixingConfig<F>,
     pub state: [Column<Advice>; 25],
     q_out: Selector,
-    pub _is_mixing_flag: Column<Advice>,
-    _base_conv_activator: Column<Advice>,
+    base_conv_activator: Column<Advice>,
 }
 
 impl<F: FieldExt> KeccakFConfig<F> {
     // We assume state is received in base-9.
-    pub fn configure(
-        meta: &mut ConstraintSystem<F>,
-        table: FromBase9TableConfig<F>,
-    ) -> KeccakFConfig<F> {
+    pub fn configure(meta: &mut ConstraintSystem<F>) -> Self {
         let state = (0..25)
             .map(|_| {
                 let column = meta.advice_column();
@@ -56,11 +52,7 @@ impl<F: FieldExt> KeccakFConfig<F> {
         // theta
         let theta_config = ThetaConfig::configure(meta.selector(), meta, state);
         // rho
-        let rho_config = {
-            let base13_to_9 = Base13toBase9TableConfig::configure(meta);
-            let special_chunk_table = SpecialChunkTableConfig::configure(meta);
-            RhoConfig::configure(meta, state, base13_to_9, special_chunk_table)
-        };
+        let rho_config = RhoConfig::configure(meta, state);
         // xi
         let xi_config = XiConfig::configure(meta.selector(), meta, state);
 
@@ -81,18 +73,20 @@ impl<F: FieldExt> KeccakFConfig<F> {
             IotaB9Config::configure(meta, state, round_ctant_b9, round_constants_b9);
 
         // Allocate space for the activation flag of the base_conversion.
-        let _base_conv_activator = meta.advice_column();
-        meta.enable_equality(_base_conv_activator);
+        let base_conv_activator = meta.advice_column();
+        meta.enable_equality(base_conv_activator);
+
         // Base conversion config.
-        let base_info = table.get_base_info(false);
+        let from_b9_table = FromBase9TableConfig::configure(meta);
+        let base_info = from_b9_table.get_base_info(false);
         let base_conversion_config =
-            StateBaseConversion::configure(meta, state, base_info, _base_conv_activator);
+            StateBaseConversion::configure(meta, state, base_info, base_conv_activator);
 
         // Mixing will make sure that the flag is binary constrained and that
         // the out state matches the expected result.
         let mixing_config = MixingConfig::configure(
             meta,
-            table,
+            from_b9_table.clone(),
             round_ctant_b9,
             round_ctant_b13,
             round_constants_b9,
@@ -120,17 +114,18 @@ impl<F: FieldExt> KeccakFConfig<F> {
             rho_config,
             xi_config,
             iota_b9_config,
+            from_b9_table,
             base_conversion_config,
             mixing_config,
             state,
             q_out,
-            _is_mixing_flag,
-            _base_conv_activator,
+            base_conv_activator,
         }
     }
 
     pub fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
-        self.rho_config.load(layouter)
+        self.rho_config.load(layouter)?;
+        self.from_b9_table.load(layouter)
     }
 
     pub fn assign_all(
@@ -192,14 +187,12 @@ impl<F: FieldExt> KeccakFConfig<F> {
             // base_13 which is what Theta requires again at the
             // start of the loop.
             state = {
-                // TODO: That could be a Fixed column.
-                // Witness 1 for the activation flag.
                 let activation_flag = layouter.assign_region(
                     || "Base conversion enable",
                     |mut region| {
                         let cell = region.assign_advice(
                             || "Enable base conversion",
-                            self._base_conv_activator,
+                            self.base_conv_activator,
                             0,
                             || Ok(F::one()),
                         )?;
@@ -320,22 +313,8 @@ mod tests {
             is_mixing: bool,
         }
 
-        #[derive(Clone)]
-        struct MyConfig<F: FieldExt> {
-            keccak_conf: KeccakFConfig<F>,
-            table: FromBase9TableConfig<F>,
-        }
-
-        impl<F: FieldExt> MyConfig<F> {
-            pub fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
-                self.keccak_conf.rho_config.load(layouter)?;
-                self.table.load(layouter)?;
-                Ok(())
-            }
-        }
-
         impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
-            type Config = MyConfig<F>;
+            type Config = KeccakFConfig<F>;
             type FloorPlanner = SimpleFloorPlanner;
 
             fn without_witnesses(&self) -> Self {
@@ -343,11 +322,7 @@ mod tests {
             }
 
             fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-                let table = FromBase9TableConfig::configure(meta);
-                MyConfig {
-                    keccak_conf: KeccakFConfig::configure(meta, table.clone()),
-                    table,
-                }
+                Self::Config::configure(meta)
             }
 
             fn synthesize(
@@ -368,7 +343,7 @@ mod tests {
                             for (idx, val) in self.in_state.iter().enumerate() {
                                 let cell = region.assign_advice(
                                     || "witness input state",
-                                    config.keccak_conf.state[idx],
+                                    config.state[idx],
                                     offset,
                                     || Ok(*val),
                                 )?;
@@ -381,7 +356,7 @@ mod tests {
                     },
                 )?;
 
-                config.keccak_conf.assign_all(
+                config.assign_all(
                     &mut layouter,
                     in_state,
                     self.out_state,

@@ -77,6 +77,37 @@ impl<F: FieldExt> MixingConfig<F> {
             ]
         });
 
+        let q_flag = meta.selector();
+
+        meta.create_gate("Ensure flag consistency", |meta| {
+            let q_flag = meta.query_selector(q_flag);
+
+            let negated_flag = meta.query_advice(flag, Rotation::next());
+            let flag = meta.query_advice(flag, Rotation::cur());
+            // We do a trick which consists on multiplying an internal selector
+            // which is always active by the actual `negated_flag`
+            // which will then enable or disable the gate.
+            //
+            // Force that `flag + negated_flag = 1`.
+            // This ensures that flag = !negated_flag.
+            let flag_consistency =
+                (flag.clone() + negated_flag.clone()) - Expression::Constant(F::one());
+
+            // Define bool constraint for flags.
+            // Based on: `(1-flag) * flag = 0` only if `flag` is boolean.
+            let bool_constraint = |flag: Expression<F>| -> Expression<F> {
+                (Expression::Constant(F::one()) - flag.clone()) * flag
+            };
+
+            // Add a constraint that sums up the results of the two branches
+            // constraining it to be equal to `out_state`.
+            [
+                q_flag.clone() * flag_consistency,
+                q_flag.clone() * bool_constraint(flag),
+                q_flag * bool_constraint(negated_flag),
+            ]
+        });
+
         // Allocate state columns and enable copy constraints for them.
         let state: [Column<Advice>; 25] = (0..25)
             .map(|_| {
