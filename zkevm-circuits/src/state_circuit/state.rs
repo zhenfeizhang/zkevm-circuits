@@ -90,8 +90,8 @@ pub enum Tag {
     CallContext = 5,
     Account = 6,
     TxRefund = 7,
-    TxAccessListAccountStorage = 8,
-    TxAccessListAccount = 9,
+    TxAccessListAccount = 8,
+    TxAccessListAccountStorage = 9,
 }
 
 /// Expression that evaluates to != 0 when x == target and 0 otherwise, asuming
@@ -145,19 +145,21 @@ pub(crate) struct BusMapping<F: FieldExt> {
     value_prev: Variable<F, F>,
 }
 
-#[derive(Debug, Default)]
-pub struct StateCircuitParams {
-    pub sanity_check: bool,
-    pub rw_counter_max: usize,
-    pub memory_rows_max: usize,
-    pub stack_rows_max: usize,
-    pub storage_rows_max: usize,
-    pub stack_address_max: usize,
-    pub memory_address_max: usize,
-}
-
 #[derive(Clone, Debug)]
-pub struct Config<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usize> {
+pub struct Config<
+    F: FieldExt,
+    // When SANITY_CHECK is true, max_address/rw_counter/stack_address are
+    // required to be in the range of
+    // MEMORY_ADDRESS_MAX/RW_COUNTER_MAX/STACK_ADDRESS_MAX during circuit
+    // synthesis
+    const SANITY_CHECK: bool,
+    const RW_COUNTER_MAX: usize,
+    const MEMORY_ROWS_MAX: usize,
+    const MEMORY_ADDRESS_MAX: usize,
+    const STACK_ROWS_MAX: usize,
+    const STACK_ADDRESS_MAX: usize,
+    const STORAGE_ROWS_MAX: usize,
+> {
     tag: Column<Fixed>, // Key 1 (Tag)
     // TODO: Key 2
     address: Column<Advice>, /* Key 3. Used for memory address, stack pointer, and
@@ -183,8 +185,26 @@ pub struct Config<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDR
     storage_key_diff_is_zero: IsZeroConfig<F>,
 }
 
-impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usize>
-    Config<F, MEMORY_ADDRESS_MAX, STACK_ADDRESS_MAX>
+impl<
+        F: FieldExt,
+        const SANITY_CHECK: bool,
+        const RW_COUNTER_MAX: usize,
+        const MEMORY_ROWS_MAX: usize,
+        const MEMORY_ADDRESS_MAX: usize,
+        const STACK_ROWS_MAX: usize,
+        const STACK_ADDRESS_MAX: usize,
+        const STORAGE_ROWS_MAX: usize,
+    >
+    Config<
+        F,
+        SANITY_CHECK,
+        RW_COUNTER_MAX,
+        MEMORY_ROWS_MAX,
+        MEMORY_ADDRESS_MAX,
+        STACK_ROWS_MAX,
+        STACK_ADDRESS_MAX,
+        STORAGE_ROWS_MAX,
+    >
 {
     /// Set up custom gates and lookup arguments for this configuration.
     pub(crate) fn configure(meta: &mut ConstraintSystem<F>) -> Self {
@@ -593,16 +613,12 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
     }
 
     /// Load lookup table / other fixed constants for this configuration.
-    pub(crate) fn load(
-        &self,
-        params: &StateCircuitParams,
-        layouter: &mut impl Layouter<F>,
-    ) -> Result<(), Error> {
+    pub(crate) fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         layouter
             .assign_region(
                 || "rw_counter table",
                 |mut region| {
-                    for idx in 0..=params.rw_counter_max {
+                    for idx in 0..=RW_COUNTER_MAX {
                         region.assign_fixed(
                             || format!("rw_counter {}", idx),
                             self.rw_counter_table,
@@ -636,7 +652,7 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
             .assign_region(
                 || "memory address table with zero",
                 |mut region| {
-                    for idx in 0..=params.memory_address_max {
+                    for idx in 0..=MEMORY_ADDRESS_MAX {
                         region.assign_fixed(
                             || format!("address with zero {}", idx),
                             self.memory_address_table_zero,
@@ -652,7 +668,7 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
         layouter.assign_region(
             || "stack address table with zero",
             |mut region| {
-                for idx in 0..=params.stack_address_max {
+                for idx in 0..=STACK_ADDRESS_MAX {
                     region.assign_fixed(
                         || format!("stack address with zero {}", idx),
                         self.stack_address_table_zero,
@@ -667,7 +683,6 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
 
     fn assign_memory_ops(
         &self,
-        params: &StateCircuitParams,
         region: &mut Region<F>,
         _randomness: F,
         ops: Vec<Operation<MemoryOp>>,
@@ -685,7 +700,7 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
             }
         }
 
-        if ops.len() + init_rows_num > params.memory_rows_max {
+        if ops.len() + init_rows_num > MEMORY_ROWS_MAX {
             panic!("too many memory operations");
         }
 
@@ -696,7 +711,7 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
         for (index, oper) in ops.iter().enumerate() {
             let op = oper.op();
             let address = F::from_bytes(&op.address().to_le_bytes()).unwrap();
-            if params.sanity_check && address > F::from(MEMORY_ADDRESS_MAX as u64) {
+            if SANITY_CHECK && address > F::from(MEMORY_ADDRESS_MAX as u64) {
                 panic!(
                     "memory address out of range {:?} > {}",
                     address, MEMORY_ADDRESS_MAX
@@ -720,7 +735,6 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
             }
 
             let bus_mapping = self.assign_op(
-                params,
                 region,
                 offset,
                 address,
@@ -737,29 +751,28 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
             offset += 1;
         }
 
-        self.pad_rows(region, offset, 0, params.memory_rows_max, 2)?;
+        self.pad_rows(region, offset, 0, MEMORY_ROWS_MAX, 2)?;
 
         Ok(bus_mappings)
     }
 
     fn assign_stack_ops(
         &self,
-        params: &StateCircuitParams,
         region: &mut Region<F>,
         randomness: F,
         ops: Vec<Operation<StackOp>>,
         address_diff_is_zero_chip: &IsZeroChip<F>,
     ) -> Result<Vec<BusMapping<F>>, Error> {
-        if ops.len() > params.stack_rows_max {
+        if ops.len() > STACK_ROWS_MAX {
             panic!("too many stack operations");
         }
         let mut bus_mappings: Vec<BusMapping<F>> = Vec::new();
 
         let mut address_prev = F::zero();
-        let mut offset = params.memory_rows_max;
+        let mut offset = MEMORY_ROWS_MAX;
         for (index, oper) in ops.iter().enumerate() {
             let op = oper.op();
-            if params.sanity_check && usize::from(*op.address()) > STACK_ADDRESS_MAX {
+            if SANITY_CHECK && usize::from(*op.address()) > STACK_ADDRESS_MAX {
                 panic!("stack address out of range");
             }
             let address = F::from(usize::from(*op.address()) as u64);
@@ -774,7 +787,6 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
             }
 
             let bus_mapping = self.assign_op(
-                params,
                 region,
                 offset,
                 address,
@@ -793,34 +805,27 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
             offset += 1;
         }
 
-        self.pad_rows(
-            region,
-            offset,
-            params.memory_rows_max,
-            params.stack_rows_max,
-            3,
-        )?;
+        self.pad_rows(region, offset, MEMORY_ROWS_MAX, STACK_ROWS_MAX, 3)?;
 
         Ok(bus_mappings)
     }
 
     fn assign_storage_ops(
         &self,
-        params: &StateCircuitParams,
         region: &mut Region<F>,
         randomness: F,
         ops: Vec<Operation<StorageOp>>,
         address_diff_is_zero_chip: &IsZeroChip<F>,
         storage_key_diff_is_zero_chip: &IsZeroChip<F>,
     ) -> Result<Vec<BusMapping<F>>, Error> {
-        if ops.len() > params.storage_rows_max {
+        if ops.len() > STORAGE_ROWS_MAX {
             panic!("too many storage operations");
         }
         let mut bus_mappings: Vec<BusMapping<F>> = Vec::new();
 
         let mut address_prev = F::zero();
         let mut storage_key_prev = F::zero();
-        let mut offset = params.memory_rows_max + params.stack_rows_max;
+        let mut offset = MEMORY_ROWS_MAX + STACK_ROWS_MAX;
         for (index, oper) in ops.iter().enumerate() {
             let op = oper.op();
             let rwc = usize::from(oper.rwc());
@@ -846,7 +851,6 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
             }
 
             let bus_mapping = self.assign_op(
-                params,
                 region,
                 offset,
                 address,
@@ -875,8 +879,8 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
         self.pad_rows(
             region,
             offset,
-            params.memory_rows_max + params.stack_rows_max,
-            params.storage_rows_max,
+            MEMORY_ROWS_MAX + STACK_ROWS_MAX,
+            STORAGE_ROWS_MAX,
             4,
         )?;
 
@@ -911,7 +915,6 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
     /// Assign cells.
     pub(crate) fn assign(
         &self,
-        params: &StateCircuitParams,
         mut layouter: impl Layouter<F>,
         randomness: F,
         memory_ops: Vec<Operation<MemoryOp>>,
@@ -939,7 +942,6 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
             || "State operations",
             |mut region| {
                 let memory_mappings = self.assign_memory_ops(
-                    params,
                     &mut region,
                     randomness,
                     memory_ops.clone(),
@@ -948,7 +950,6 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
                 bus_mappings.extend(memory_mappings.unwrap());
 
                 let stack_mappings = self.assign_stack_ops(
-                    params,
                     &mut region,
                     randomness,
                     stack_ops.clone(),
@@ -957,7 +958,6 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
                 bus_mappings.extend(stack_mappings.unwrap());
 
                 let storage_mappings = self.assign_storage_ops(
-                    params,
                     &mut region,
                     randomness,
                     storage_ops.clone(),
@@ -1000,7 +1000,6 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
     #[allow(clippy::too_many_arguments)]
     fn assign_op(
         &self,
-        params: &StateCircuitParams,
         region: &mut Region<'_, F>,
         offset: usize,
         address: F,
@@ -1020,7 +1019,7 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
             }
         };
 
-        if params.sanity_check && rw_counter > params.rw_counter_max {
+        if SANITY_CHECK && rw_counter > RW_COUNTER_MAX {
             panic!("rw_counter out of range");
         }
         let rw_counter = {
@@ -1124,10 +1123,14 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
 #[derive(Default)]
 pub struct StateCircuit<
     F: FieldExt,
+    const SANITY_CHECK: bool,
+    const RW_COUNTER_MAX: usize,
+    const MEMORY_ROWS_MAX: usize,
     const MEMORY_ADDRESS_MAX: usize,
+    const STACK_ROWS_MAX: usize,
     const STACK_ADDRESS_MAX: usize,
+    const STORAGE_ROWS_MAX: usize,
 > {
-    pub params: StateCircuitParams,
     /// randomness used in linear combination
     pub randomness: F,
     /// Memory Operations
@@ -1138,19 +1141,35 @@ pub struct StateCircuit<
     pub storage_ops: Vec<Operation<StorageOp>>,
 }
 
-impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usize>
-    StateCircuit<F, MEMORY_ADDRESS_MAX, STACK_ADDRESS_MAX>
+impl<
+        F: FieldExt,
+        const SANITY_CHECK: bool,
+        const RW_COUNTER_MAX: usize,
+        const MEMORY_ROWS_MAX: usize,
+        const MEMORY_ADDRESS_MAX: usize,
+        const STACK_ROWS_MAX: usize,
+        const STACK_ADDRESS_MAX: usize,
+        const STORAGE_ROWS_MAX: usize,
+    >
+    StateCircuit<
+        F,
+        SANITY_CHECK,
+        RW_COUNTER_MAX,
+        MEMORY_ROWS_MAX,
+        MEMORY_ADDRESS_MAX,
+        STACK_ROWS_MAX,
+        STACK_ADDRESS_MAX,
+        STORAGE_ROWS_MAX,
+    >
 {
     /// Use memory_ops, stack_ops, storage_ops to build a StateCircuit instance.
     pub fn new(
-        params: StateCircuitParams,
         randomness: F,
         memory_ops: Vec<Operation<MemoryOp>>,
         stack_ops: Vec<Operation<StackOp>>,
         storage_ops: Vec<Operation<StorageOp>>,
     ) -> Self {
         Self {
-            params,
             randomness,
             memory_ops,
             stack_ops,
@@ -1159,10 +1178,37 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
     }
 }
 
-impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usize> Circuit<F>
-    for StateCircuit<F, MEMORY_ADDRESS_MAX, STACK_ADDRESS_MAX>
+impl<
+        F: FieldExt,
+        const SANITY_CHECK: bool,
+        const RW_COUNTER_MAX: usize,
+        const MEMORY_ROWS_MAX: usize,
+        const MEMORY_ADDRESS_MAX: usize,
+        const STACK_ROWS_MAX: usize,
+        const STACK_ADDRESS_MAX: usize,
+        const STORAGE_ROWS_MAX: usize,
+    > Circuit<F>
+    for StateCircuit<
+        F,
+        SANITY_CHECK,
+        RW_COUNTER_MAX,
+        MEMORY_ROWS_MAX,
+        MEMORY_ADDRESS_MAX,
+        STACK_ROWS_MAX,
+        STACK_ADDRESS_MAX,
+        STORAGE_ROWS_MAX,
+    >
 {
-    type Config = Config<F, MEMORY_ADDRESS_MAX, STACK_ADDRESS_MAX>;
+    type Config = Config<
+        F,
+        SANITY_CHECK,
+        RW_COUNTER_MAX,
+        MEMORY_ROWS_MAX,
+        MEMORY_ADDRESS_MAX,
+        STACK_ROWS_MAX,
+        STACK_ADDRESS_MAX,
+        STORAGE_ROWS_MAX,
+    >;
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
@@ -1178,9 +1224,8 @@ impl<F: FieldExt, const MEMORY_ADDRESS_MAX: usize, const STACK_ADDRESS_MAX: usiz
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        config.load(&self.params, &mut layouter)?;
+        config.load(&mut layouter)?;
         config.assign(
-            &self.params,
             layouter,
             self.randomness,
             self.memory_ops.clone(),
@@ -1203,17 +1248,16 @@ mod state_circuit_tests {
 
     macro_rules! test_state_circuit {
         ($k:expr, $rw_counter_max:expr, $memory_rows_max:expr, $memory_address_max:expr, $stack_rows_max:expr, $stack_address_max:expr, $storage_rows_max:expr, $memory_ops:expr, $stack_ops:expr, $storage_ops:expr, $result:expr) => {{
-            let params = StateCircuitParams {
-                sanity_check: true,
-                rw_counter_max: $rw_counter_max,
-                memory_rows_max: $memory_rows_max,
-                memory_address_max: $memory_address_max,
-                stack_rows_max: $stack_rows_max,
-                stack_address_max: $stack_address_max,
-                storage_rows_max: $storage_rows_max,
-            };
-            let circuit = StateCircuit::<Fr, $memory_address_max, $stack_address_max> {
-                params,
+            let circuit = StateCircuit::<
+                Fr,
+                true,
+                $rw_counter_max,
+                $memory_rows_max,
+                $memory_address_max,
+                $stack_rows_max,
+                $stack_address_max,
+                $storage_rows_max,
+            > {
                 randomness: Fr::rand(),
                 memory_ops: $memory_ops,
                 stack_ops: $stack_ops,
@@ -1227,17 +1271,16 @@ mod state_circuit_tests {
 
     macro_rules! test_state_circuit_error {
         ($k:expr, $rw_counter_max:expr, $memory_rows_max:expr, $memory_address_max:expr, $stack_rows_max:expr, $stack_address_max:expr, $storage_rows_max:expr, $memory_ops:expr, $stack_ops:expr, $storage_ops:expr) => {{
-            let params = StateCircuitParams {
-                sanity_check: false,
-                rw_counter_max: $rw_counter_max,
-                memory_rows_max: $memory_rows_max,
-                memory_address_max: $memory_address_max,
-                stack_rows_max: $stack_rows_max,
-                stack_address_max: $stack_address_max,
-                storage_rows_max: $storage_rows_max,
-            };
-            let circuit = StateCircuit::<Fr, $memory_address_max, $stack_address_max> {
-                params,
+            let circuit = StateCircuit::<
+                Fr,
+                false,
+                $rw_counter_max,
+                $memory_rows_max,
+                $memory_address_max,
+                $stack_rows_max,
+                $stack_address_max,
+                $storage_rows_max,
+            > {
                 randomness: Fr::rand(),
                 memory_ops: $memory_ops,
                 stack_ops: $stack_ops,
