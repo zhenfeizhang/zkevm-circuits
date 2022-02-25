@@ -765,11 +765,15 @@ impl<'a> CircuitInputStateRef<'a> {
                 self.call().address,
                 step.stack.nth_last(2)?,
             ),
-            CallKind::DelegateCall => (self.call().caller_address, self.call().address, 0.into()),
+            CallKind::DelegateCall => (
+                self.call().caller_address,
+                self.call().address,
+                Word::zero(),
+            ),
             CallKind::StaticCall => (
                 self.call().address,
                 step.stack.nth_last(1)?.to_address(),
-                0.into(),
+                Word::zero(),
             ),
             CallKind::Create => (
                 self.call().address,
@@ -1766,7 +1770,7 @@ mod tracer_tests {
 
     impl CircuitInputBuilderTx {
         fn new(geth_data: &GethData, geth_step: &GethExecStep) -> Self {
-            let block = crate::mock::BlockData::new_from_geth_data(geth_data.clone());
+            let block = crate::mock::TestContext::new_from_geth_data(geth_data.clone());
             let mut builder = block.new_circuit_input_builder();
             let tx = builder.new_tx(&block.eth_tx, true).unwrap();
             let tx_ctx = TransactionContext::new(
@@ -1814,7 +1818,7 @@ mod tracer_tests {
             code_source: CodeSource::Memory,
             code_hash: Hash::zero(),
             depth: 2,
-            value: 0.into(),
+            value: Word::zero(),
             call_data_offset: 0,
             call_data_length: 0,
             return_data_offset: 0,
@@ -2707,7 +2711,7 @@ mod tracer_tests {
             code_source: CodeSource::Address(*ADDR_B),
             code_hash: Hash::zero(),
             depth: 2,
-            value: 0.into(),
+            value: Word::zero(),
             call_data_offset: 0,
             call_data_length: 0,
             return_data_offset: 0,

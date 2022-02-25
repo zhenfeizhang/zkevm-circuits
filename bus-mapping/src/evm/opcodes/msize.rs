@@ -43,7 +43,7 @@ mod msize_tests {
             STOP
         };
 
-        let block = crate::mock::BlockData::new_from_geth_data(
+        let block = crate::mock::TestContext::new_from_geth_data(
             mock::new_single_tx_trace_code_at_start(&code).unwrap(),
         );
 

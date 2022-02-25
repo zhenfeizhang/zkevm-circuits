@@ -35,7 +35,6 @@ impl Opcode for Calldatasize {
 mod calldatasize_tests {
     use crate::{
         circuit_input_builder::{ExecStep, TransactionContext},
-        mock::BlockData,
         operation::{CallContextField, CallContextOp, RW},
         Error,
     };
@@ -54,7 +53,7 @@ mod calldatasize_tests {
 
         // Get the execution steps from the external tracer
         let block =
-            BlockData::new_from_geth_data(new_single_tx_trace_code_at_start(&code).unwrap());
+            TestContext::new_from_geth_data(new_single_tx_trace_code_at_start(&code).unwrap());
 
         let mut builder = block.new_circuit_input_builder();
         builder.handle_tx(&block.eth_tx, &block.geth_trace).unwrap();

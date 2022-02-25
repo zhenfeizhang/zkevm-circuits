@@ -54,7 +54,7 @@ pub fn test_circuits_using_bytecode(
     config: BytecodeTestConfig,
 ) -> Result<(), Vec<VerifyFailure>> {
     // execute the bytecode and get trace
-    let block_trace = bus_mapping::mock::BlockData::new_from_geth_data(
+    let block_trace = bus_mapping::mock::TestContext::new_from_geth_data(
         mock::new_single_tx_trace_code_gas(&bytecode, Gas(config.gas_limit)).unwrap(),
     );
     let mut builder = block_trace.new_circuit_input_builder();

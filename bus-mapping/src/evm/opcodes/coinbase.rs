@@ -2,13 +2,13 @@
 mod coinbase_tests {
     use crate::{
         circuit_input_builder::{ExecStep, TransactionContext},
-        mock::BlockData,
         operation::RW,
         Error,
     };
     use eth_types::evm_types::StackAddress;
     use eth_types::{bytecode, ToWord};
     use mock::new_single_tx_trace_code_at_start;
+    use mock::TestContext;
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -21,7 +21,7 @@ mod coinbase_tests {
 
         // Get the execution steps from the external tracer
         let block =
-            BlockData::new_from_geth_data(new_single_tx_trace_code_at_start(&code).unwrap());
+            TestContext::new_from_geth_data(new_single_tx_trace_code_at_start(&code).unwrap());
 
         let mut builder = block.new_circuit_input_builder();
         builder.handle_tx(&block.eth_tx, &block.geth_trace).unwrap();

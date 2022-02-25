@@ -24,16 +24,16 @@ mod gas_tests {
     use crate::{
         circuit_input_builder::{ExecStep, TransactionContext},
         evm::OpcodeId,
-        mock::BlockData,
         operation::StackAddress,
     };
     use eth_types::{bytecode, bytecode::Bytecode, evm_types::GasCost, Word};
     use mock::new_single_tx_trace_code_at_start;
+    use mock::TestContext;
 
     use super::*;
 
     fn test_ok(code: Bytecode, gas_left: u64) -> Result<(), Error> {
-        let block = BlockData::new_from_geth_data(new_single_tx_trace_code_at_start(&code)?);
+        let block = TestContext::new_from_geth_data(new_single_tx_trace_code_at_start(&code)?);
 
         let mut builder = block.new_circuit_input_builder();
         builder.handle_tx(&block.eth_tx, &block.geth_trace)?;
