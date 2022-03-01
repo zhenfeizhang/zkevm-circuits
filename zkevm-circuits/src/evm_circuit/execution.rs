@@ -37,6 +37,7 @@ mod memory;
 mod memory_copy;
 mod msize;
 mod mul;
+mod origin;
 mod pc;
 mod pop;
 mod push;
@@ -67,6 +68,7 @@ use memory::MemoryGadget;
 use memory_copy::CopyToMemoryGadget;
 use msize::MsizeGadget;
 use mul::MulGadget;
+use origin::OriginGadget;
 use pc::PcGadget;
 use pop::PopGadget;
 use push::PushGadget;
@@ -108,6 +110,7 @@ pub(crate) struct ExecutionConfig<F> {
     byte_gadget: ByteGadget<F>,
     calldatacopy_gadget: CallDataCopyGadget<F>,
     calldatasize_gadget: CallDataSizeGadget<F>,
+    origin_gadget: OriginGadget<F>,
     caller_gadget: CallerGadget<F>,
     call_value_gadget: CallValueGadget<F>,
     comparator_gadget: ComparatorGadget<F>,
@@ -242,6 +245,7 @@ impl<F: Field> ExecutionConfig<F> {
             byte_gadget: configure_gadget!(),
             calldatacopy_gadget: configure_gadget!(),
             calldatasize_gadget: configure_gadget!(),
+            origin_gadget: configure_gadget!(),
             caller_gadget: configure_gadget!(),
             call_value_gadget: configure_gadget!(),
             comparator_gadget: configure_gadget!(),
@@ -510,6 +514,7 @@ impl<F: Field> ExecutionConfig<F> {
             ExecutionState::PUSH => assign_exec_step!(self.push_gadget),
             ExecutionState::DUP => assign_exec_step!(self.dup_gadget),
             ExecutionState::SWAP => assign_exec_step!(self.swap_gadget),
+            ExecutionState::ORIGIN => assign_exec_step!(self.origin_gadget),
             ExecutionState::CALLER => assign_exec_step!(self.caller_gadget),
             ExecutionState::CALLVALUE => {
                 assign_exec_step!(self.call_value_gadget)

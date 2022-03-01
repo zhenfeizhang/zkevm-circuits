@@ -99,7 +99,7 @@ impl<F: Field> EvmCircuit<F> {
     }
 }
 
-#[cfg(feature = "test")]
+#[cfg(test)]
 pub mod test {
     use crate::{
         evm_circuit::{

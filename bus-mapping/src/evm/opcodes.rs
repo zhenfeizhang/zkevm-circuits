@@ -16,6 +16,7 @@ mod jumpi;
 mod mload;
 mod msize;
 mod mstore;
+mod origin;
 mod pc;
 mod pop;
 mod push;
@@ -40,6 +41,7 @@ use jumpi::Jumpi;
 use mload::Mload;
 use msize::Msize;
 use mstore::Mstore;
+use origin::Origin;
 use pc::Pc;
 use pop::Pop;
 use selfbalance::Selfbalance;
@@ -104,7 +106,7 @@ fn fn_gen_associated_ops(opcode_id: &OpcodeId) -> FnGenAssociatedOps {
         // OpcodeId::SHA3 => {},
         // OpcodeId::ADDRESS => {},
         // OpcodeId::BALANCE => {},
-        // OpcodeId::ORIGIN => {},
+        OpcodeId::ORIGIN => Origin::gen_associated_ops,
         OpcodeId::CALLER => Caller::gen_associated_ops,
         OpcodeId::CALLVALUE => Callvalue::gen_associated_ops,
         // OpcodeId::CALLDATALOAD => {},
