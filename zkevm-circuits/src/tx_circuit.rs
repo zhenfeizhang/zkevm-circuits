@@ -129,7 +129,7 @@ pub struct TxCircuitConfig<F: Field> {
 
     /// Address recovered by SignVerifyChip
     sv_address: Column<Advice>,
-    sign_verify: SignVerifyConfig,
+    sign_verify: SignVerifyConfig<F>,
 
     // External tables
     tx_table: TxTable,
