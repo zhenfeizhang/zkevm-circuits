@@ -10,10 +10,9 @@ use crate::{
     util::{Challenges, Expr},
 };
 use ecc::{maingate, EccConfig, GeneralEccChip};
-use ecdsa::ecdsa::{AssignedEcdsaSig, AssignedPublicKey, EcdsaChip};
+use ecdsa::ecdsa::AssignedPublicKey;
 use eth_types::sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData};
 use eth_types::{self, Field};
-use ethers_core::k256::elliptic_curve::PrimeField;
 use halo2_base::Context;
 use halo2_base::{utils::modulus, ContextParams};
 use halo2_ecc::fields::fp::{FpConfig, FpStrategy};
@@ -576,7 +575,6 @@ impl<F: Field> SignVerifyChip<F> {
         ctx: &mut RegionCtx<F>,
         chips: &ChipsRef<F, NUMBER_OF_LIMBS, BIT_LEN_LIMB>,
         sign_data: Option<&SignData>,
-        assigned_ecdsa: &AssignedECDSA<F, FpChip<F>>,
         challenges: &Challenges<Value<F>>,
     ) -> Result<AssignedSignatureVerify<F>, Error> {
         let main_gate = chips.main_gate;
@@ -586,7 +584,7 @@ impl<F: Field> SignVerifyChip<F> {
             range_chip,
             ecc_chip,
             scalar_chip,
-            ecdsa_chip:_,
+            ecdsa_chip: _,
         } = chips;
 
         let (padding, sign_data) = match sign_data {
@@ -670,9 +668,7 @@ impl<F: Field> SignVerifyChip<F> {
             let pk_x_le = integer_to_bytes_le(ctx, range_chip, pk_assigned.point.x())?;
             let pk_y_le = integer_to_bytes_le(ctx, range_chip, pk_assigned.point.y())?;
 
-            let assigned_pk_le = iter::empty()
-                .chain(&pk_y_le)
-                .chain(&pk_x_le);
+            let assigned_pk_le = iter::empty().chain(&pk_y_le).chain(&pk_x_le);
             let pk_le = iter::empty()
                 .chain(sign_data.pk.y.to_bytes())
                 .chain(sign_data.pk.x.to_bytes())
@@ -773,16 +769,10 @@ impl<F: Field> SignVerifyChip<F> {
             |region| {
                 let mut assigned_sig_verifs = Vec::new();
                 let mut ctx = RegionCtx::new(region, 0);
-                for (i, assigned_ecdsa) in assigned_ecdsas.iter().enumerate() {
+                for i in 0..assigned_ecdsas.len() {
                     let sign_data = signatures.get(i); // None when padding (enabled when address == 0)
-                    let assigned_sig_verif = self.assign_signature_verify(
-                        config,
-                        &mut ctx,
-                        &chips,
-                        sign_data,
-                        assigned_ecdsa,
-                        challenges,
-                    )?;
+                    let assigned_sig_verif = self
+                        .assign_signature_verify(config, &mut ctx, &chips, sign_data, challenges)?;
                     assigned_sig_verifs.push(assigned_sig_verif);
                 }
                 log::debug!("signature address verify: {} rows", ctx.offset());
@@ -867,7 +857,11 @@ mod sign_verify_tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let challenges = config.challenges.values(&mut layouter);
-            config.sign_verify.ecdsa_config.range.load_lookup_table(&mut layouter)?;
+            config
+                .sign_verify
+                .ecdsa_config
+                .range
+                .load_lookup_table(&mut layouter)?;
             self.sign_verify.assign(
                 &config.sign_verify,
                 &mut layouter,
