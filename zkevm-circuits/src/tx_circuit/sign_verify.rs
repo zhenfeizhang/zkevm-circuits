@@ -1,5 +1,13 @@
 //! Circuit to verify multiple ECDSA secp256k1 signatures.
-
+//
+// This module uses two different types of chip configurations
+// - halo2-ecc's ecdsa chip: this is used to prove the correctness of secp signatures
+// - halo2wrong's ecc chip: this is used to prove that the RLC of public keys, messages, etc. are correct.
+// 
+// This introduce a soundness gap -- we need to show that pk/msg in the ecdsa chip is the same as
+// the one used in ecc chip. __This step is currently missing.__
+//
+//
 // Naming notes:
 // - *_be: Big-Endian bytes
 // - *_le: Little-Endian bytes
@@ -23,19 +31,14 @@ use halo2_ecc::{
 };
 use halo2_ecc::{ecc::EccChip, fields::fp_overflow::FpOverflowChip};
 use halo2_proofs::{
-    arithmetic::{CurveAffine, FieldExt},
+    arithmetic::FieldExt,
     circuit::{AssignedCell, Cell, Layouter, Value},
     halo2curves::secp256k1::Secp256k1Affine,
-    halo2curves::{
-        group::{Curve, Group},
-        secp256k1::{self, Fp, Fq},
-    },
+    halo2curves::secp256k1::{self, Fp, Fq},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
     poly::Rotation,
 };
 use integer::{AssignedInteger, IntegerChip, IntegerConfig, IntegerInstructions, Range};
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
 
 #[cfg(feature = "onephase")]
 use halo2_proofs::plonk::FirstPhase as SecondPhase;
@@ -53,7 +56,7 @@ use num::Integer;
 use std::{iter, marker::PhantomData};
 
 /// Hard coded parameters.
-// FIXME: allow for a configrable param.
+// FIXME: allow for a configurable param.
 const NUM_ADVICE: usize = 36;
 /// Chip to handle overflow integers of ECDSA::Fq, the scalar field
 type FqOverflowChip<'a, F> = FpOverflowChip<'a, F, Fq>;
@@ -64,10 +67,6 @@ type FpChip<F> = FpConfig<F, Fp>;
 /// key corresponding to an Ethereum Address.
 #[derive(Clone, Debug)]
 pub struct SignVerifyChip<F: Field> {
-    /// Aux generator for EccChip
-    pub aux_generator: Secp256k1Affine,
-    /// Window size for EccChip
-    pub window_size: usize,
     /// Max number of verifications
     pub max_verif: usize,
     /// Marker
@@ -77,49 +76,16 @@ pub struct SignVerifyChip<F: Field> {
 impl<F: Field> SignVerifyChip<F> {
     /// Return a new SignVerifyChip
     pub fn new(max_verif: usize) -> Self {
-        // TODO: Investigate if it is safe to use a random point as aux generator that
-        // is choosen by the prover.  If this is unsafe, we will need to update the
-        // EccChip to calculate an aux generator using the challange API.
-        // https://github.com/privacy-scaling-explorations/halo2wrong/issues/53
-        let mut rng = ChaCha20Rng::seed_from_u64(0);
-        let aux_generator =
-            <Secp256k1Affine as CurveAffine>::CurveExt::random(&mut rng).to_affine();
         Self {
-            aux_generator,
-            window_size: 2,
             max_verif,
             _marker: PhantomData,
         }
-    }
-
-    /// Return the minimum number of rows required to prove an input of a
-    /// particular size.
-    pub fn min_num_rows(num_verif: usize) -> usize {
-        // The values rows_ecc_chip_aux, rows_ecdsa_chip_verification and
-        // rows_ecdsa_chip_verification have been obtained from log debugs while running
-        // the tx circuit with max_txs=1. For example:
-        // `RUST_LOG=debug RUST_BACKTRACE=1 cargo test tx_circuit_1tx_1max_tx --release
-        // --all-features -- --nocapture`
-        // The value rows_range_chip_table has been optained by patching the halo2
-        // library to report the number of rows used in the range chip table
-        // region. TODO: Figure out a way to get these numbers automatically.
-        let rows_range_chip_table = 295188;
-        let rows_ecc_chip_aux = 226;
-        let rows_ecdsa_chip_verification = 140360;
-        let rows_signature_address_verify = 76;
-        std::cmp::max(
-            rows_range_chip_table,
-            (rows_ecc_chip_aux + rows_ecdsa_chip_verification + rows_signature_address_verify)
-                * num_verif,
-        )
     }
 }
 
 impl<F: Field> Default for SignVerifyChip<F> {
     fn default() -> Self {
         Self {
-            aux_generator: Secp256k1Affine::default(),
-            window_size: 1,
             max_verif: 0,
             _marker: PhantomData::default(),
         }
@@ -299,6 +265,7 @@ impl<F: Field> SignVerifyConfig<F> {
 impl<F: Field> SignVerifyConfig<F> {
     pub(crate) fn load_range(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         let range_chip = RangeChip::<F>::new(self.range_config.clone());
+        self.ecdsa_config.range.load_lookup_table(layouter)?;
         range_chip.load_table(layouter)
     }
 
@@ -388,7 +355,7 @@ fn integer_to_bytes_le<F: Field, FE: FieldExt>(
 }
 
 /// Helper structure pass around references to all the chips required for an
-/// ECDSA veficication.
+/// ECDSA verification.
 struct ChipsRef<'a, F: Field, const NUMBER_OF_LIMBS: usize, const BIT_LEN_LIMB: usize> {
     main_gate: &'a MainGate<F>,
     range_chip: &'a RangeChip<F>,
@@ -398,16 +365,6 @@ struct ChipsRef<'a, F: Field, const NUMBER_OF_LIMBS: usize, const BIT_LEN_LIMB: 
 }
 
 impl<F: Field> SignVerifyChip<F> {
-    fn assign_aux(
-        &self,
-        ctx: &mut RegionCtx<'_, F>,
-        ecc_chip: &mut GeneralEccChip<Secp256k1Affine, F, NUMBER_OF_LIMBS, BIT_LEN_LIMB>,
-    ) -> Result<(), Error> {
-        ecc_chip.assign_aux_generator(ctx, Value::known(self.aux_generator))?;
-        ecc_chip.assign_aux(ctx, self.window_size, 1)?;
-        Ok(())
-    }
-
     // Verifies the ecdsa relationship. I.e., prove that the signature
     /// is (in)valid or not under the given public key and the message hash in
     /// the circuit. Does not enforce the signature is valid.
@@ -442,7 +399,7 @@ impl<F: Field> SignVerifyChip<F> {
         } = chips;
 
         // build ecc chip from Fp chip
-        let halo2_ecc_chip = EccChip::<F, FpChip<F>>::construct(ecdsa_chip);
+        let ecc_chip = EccChip::<F, FpChip<F>>::construct(ecdsa_chip);
         // build Fq chip from Fp chip
         // TODO: pass the parameters
         let fq_chip = FqOverflowChip::construct(ecdsa_chip.range(), 91, 3, modulus::<Fq>());
@@ -451,33 +408,33 @@ impl<F: Field> SignVerifyChip<F> {
         // println!("s: {:?}", sig_s);
         // println!("msg: {:?}", msg_hash);
 
-        let halo2_ecc_integer_r = fq_chip.load_private(
+        let integer_r = fq_chip.load_private(
             ctx,
             FqOverflowChip::<F>::fe_to_witness(&Value::known(*sig_r)),
         )?;
-        let halo2_ecc_integer_s = fq_chip.load_private(
+        let integer_s = fq_chip.load_private(
             ctx,
             FqOverflowChip::<F>::fe_to_witness(&Value::known(*sig_s)),
         )?;
-        let halo2_ecc_msg_hash = fq_chip.load_private(
+        let msg_hash = fq_chip.load_private(
             ctx,
             FqOverflowChip::<F>::fe_to_witness(&Value::known(*msg_hash)),
         )?;
 
-        let halo2_pk_assigned =
-            halo2_ecc_chip.load_private(ctx, (Value::known(pk.x), Value::known(pk.y)))?;
+        let pk_assigned =
+            ecc_chip.load_private(ctx, (Value::known(pk.x), Value::known(pk.y)))?;
 
         // returns the verification result of ecdsa signature
         //
         // WARNING: this circuit does not enforce the returned value to be true
         // make sure the caller checks this result!
         let ecdsa_is_valid = ecdsa_verify_no_pubkey_check::<F, Fp, Fq, Secp256k1Affine>(
-            halo2_ecc_chip.field_chip,
+            ecc_chip.field_chip,
             ctx,
-            &halo2_pk_assigned,
-            &halo2_ecc_integer_r,
-            &halo2_ecc_integer_s,
-            &halo2_ecc_msg_hash,
+            &pk_assigned,
+            &integer_r,
+            &integer_s,
+            &msg_hash,
             4,
             4,
         )?;
@@ -487,11 +444,11 @@ impl<F: Field> SignVerifyChip<F> {
         // IMPORTANT: this copies cells to the lookup advice column to perform range
         // check lookups
         // This is not optional.
-        let (_const_rows, _total_fixed, _lookup_rows) = halo2_ecc_chip.field_chip.finalize(ctx)?;
+        let (_const_rows, _total_fixed, _lookup_rows) = ecc_chip.field_chip.finalize(ctx)?;
 
         Ok(AssignedECDSA {
-            pk: halo2_pk_assigned,
-            msg_hash: halo2_ecc_msg_hash,
+            pk:pk_assigned,
+            msg_hash,
             sig_is_valid: ecdsa_is_valid,
         })
     }
@@ -745,7 +702,7 @@ impl<F: Field> SignVerifyChip<F> {
             || "ecdsa chip verification",
             |region| {
                 let mut assigned_ecdsas = Vec::new();
-                let mut halo2_ctx = Context::new(
+                let mut ctx = Context::new(
                     region,
                     ContextParams {
                         num_advice: vec![("ecdsa chip".to_string(), NUM_ADVICE)],
@@ -758,7 +715,7 @@ impl<F: Field> SignVerifyChip<F> {
                         // padding (enabled when address == 0)
                         SignData::default()
                     };
-                    let assigned_ecdsa = self.assign_ecdsa(&mut halo2_ctx, &chips, &signature)?;
+                    let assigned_ecdsa = self.assign_ecdsa(&mut ctx, &chips, &signature)?;
                     assigned_ecdsas.push(assigned_ecdsa);
                 }
                 Ok(assigned_ecdsas)
@@ -798,11 +755,7 @@ mod sign_verify_tests {
     use halo2_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
-        halo2curves::{
-            bn256::Fr,
-            group::{Curve, Group},
-            CurveAffine,
-        },
+        halo2curves::{bn256::Fr, group::Curve},
         plonk::Circuit,
     };
     use pretty_assertions::assert_eq;
@@ -857,11 +810,6 @@ mod sign_verify_tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let challenges = config.challenges.values(&mut layouter);
-            config
-                .sign_verify
-                .ecdsa_config
-                .range
-                .load_lookup_table(&mut layouter)?;
             self.sign_verify.assign(
                 &config.sign_verify,
                 &mut layouter,
@@ -879,15 +827,9 @@ mod sign_verify_tests {
     }
 
     fn run<F: Field>(k: u32, max_verif: usize, signatures: Vec<SignData>) {
-        let mut rng = XorShiftRng::seed_from_u64(2);
-        let aux_generator =
-            <Secp256k1Affine as CurveAffine>::CurveExt::random(&mut rng).to_affine();
-
         // SignVerifyChip -> ECDSAChip -> MainGate instance column
         let circuit = TestCircuitSignVerify::<F> {
             sign_verify: SignVerifyChip {
-                aux_generator,
-                window_size: 2,
                 max_verif,
                 _marker: PhantomData,
             },
