@@ -632,9 +632,9 @@ impl<F: Field> SignVerifyChip<F> {
                     self.enable_keccak_lookup(
                         config,
                         &mut ctx,
-                        &is_address_zero,
-                        &pk_rlc,
-                        &pk_hash_rlc,
+                        is_address_zero,
+                        pk_rlc,
+                        pk_hash_rlc,
                     )?;
                 }
                 Ok(())
