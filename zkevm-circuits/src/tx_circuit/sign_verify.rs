@@ -1,14 +1,11 @@
 //! Circuit to verify multiple ECDSA secp256k1 signatures.
 //
 // This module uses two different types of chip configurations
-// - halo2-ecc's ecdsa chip: this is used to prove the correctness of secp
-//   signatures
-// - halo2wrong's ecc chip: this is used to prove that the RLC of public keys,
-//   messages, etc. are correct.
+// - halo2-ecc's ecdsa chip, which is used
+//    - to prove the correctness of secp signatures
+//    - to compute the RLC in circuit
+// - halo2wrong's main gate chip: this is used for keccak lookup table
 //
-// This introduce a soundness gap -- we need to show that pk/msg in the ecdsa
-// chip is the same as the one used in ecc chip. __This step is currently
-// missing.__
 //
 //
 // Naming notes:
@@ -20,7 +17,7 @@ use crate::{
     table::KeccakTable,
     util::{Challenges, Expr},
 };
-use ecc::{maingate};
+use ecc::maingate;
 use eth_types::sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData};
 use eth_types::{self, Field};
 use halo2_base::{
@@ -54,15 +51,14 @@ use halo2_proofs::plonk::SecondPhase;
 use itertools::Itertools;
 use keccak256::plain::Keccak;
 use log::error;
-use maingate::{
-    MainGate, MainGateConfig, 
-    RegionCtx,
-};
+use maingate::{MainGate, MainGateConfig, RegionCtx};
 use std::{iter, marker::PhantomData};
 
 /// Hard coded parameters.
 // FIXME: allow for a configurable param.
 const NUM_ADVICE: usize = 36;
+const LOG_ROWS_PER_SIG: usize = 13;
+
 /// Chip to handle overflow integers of ECDSA::Fq, the scalar field
 type FqOverflowChip<'a, F> = FpOverflowChip<'a, F, Fq>;
 /// Chip to handle ECDSA::Fp, the base field
@@ -86,6 +82,12 @@ impl<F: Field> SignVerifyChip<F> {
             _marker: PhantomData,
         }
     }
+
+    /// Return the minimum number of rows required to prove an input of a
+    /// particular size.
+    pub fn min_num_rows(num_verif: usize) -> usize {
+        num_verif << LOG_ROWS_PER_SIG
+    }
 }
 
 impl<F: Field> Default for SignVerifyChip<F> {
@@ -96,10 +98,6 @@ impl<F: Field> Default for SignVerifyChip<F> {
         }
     }
 }
-
-// const NUMBER_OF_LIMBS: usize = 4;
-// const BIT_LEN_LIMB: usize = 72;
-// const BIT_LEN_LAST_LIMB: usize = 256 - (NUMBER_OF_LIMBS - 1) * BIT_LEN_LIMB;
 
 /// SignVerify Configuration
 #[derive(Debug, Clone)]
