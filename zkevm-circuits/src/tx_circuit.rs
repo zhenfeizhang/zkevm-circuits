@@ -161,7 +161,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             tx_table,
             keccak_table,
             rlp_table,
-            challenges,
+            challenges: _,
         }: Self::ConfigArgs,
     ) -> Self {
         let q_enable = meta.fixed_column();
@@ -401,7 +401,7 @@ impl<F: Field> SubCircuitConfig<F> for TxCircuitConfig<F> {
             rlp_table,
         );
 
-        let sign_verify = SignVerifyConfig::new(meta, keccak_table.clone(), challenges);
+        let sign_verify = SignVerifyConfig::new(meta, keccak_table.clone());
 
         meta.create_gate("is_calldata", |meta| {
             let mut cb = BaseConstraintBuilder::default();

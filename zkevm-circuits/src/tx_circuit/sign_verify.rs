@@ -39,7 +39,7 @@ use halo2_proofs::{
     circuit::{Cell, Layouter, Value},
     halo2curves::secp256k1::Secp256k1Affine,
     halo2curves::secp256k1::{Fp, Fq},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
+    plonk::{Advice, Column, ConstraintSystem, Error, Selector},
     poly::Rotation,
 };
 
@@ -106,8 +106,6 @@ pub(crate) struct SignVerifyConfig<F: Field> {
     ecdsa_config: FpChip<F>,
     main_gate_config: MainGateConfig,
     // RLC
-    q_rlc_evm_word: Selector,
-    q_rlc_keccak_input: Selector,
     rlc: Column<Advice>,
     // Keccak
     q_keccak: Selector,
@@ -115,11 +113,7 @@ pub(crate) struct SignVerifyConfig<F: Field> {
 }
 
 impl<F: Field> SignVerifyConfig<F> {
-    pub(crate) fn new(
-        meta: &mut ConstraintSystem<F>,
-        keccak_table: KeccakTable,
-        challenges: Challenges<Expression<F>>,
-    ) -> Self {
+    pub(crate) fn new(meta: &mut ConstraintSystem<F>, keccak_table: KeccakTable) -> Self {
         // halo2-ecc's ECDSA config
         //
         // Create a new FpConfig chip for the following parameters
@@ -151,27 +145,8 @@ impl<F: Field> SignVerifyConfig<F> {
         let main_gate_config = MainGate::<F>::configure(meta);
 
         // RLC
-        let q_rlc_evm_word = meta.selector();
-        let q_rlc_keccak_input = meta.selector();
         let rlc = meta.advice_column_in(SecondPhase);
         meta.enable_equality(rlc);
-
-        Self::configure_rlc(
-            meta,
-            "evm_word_rlc",
-            main_gate_config.clone(),
-            q_rlc_evm_word,
-            rlc,
-            challenges.evm_word(),
-        );
-        Self::configure_rlc(
-            meta,
-            "keccak_input_rlc",
-            main_gate_config.clone(),
-            q_rlc_keccak_input,
-            rlc,
-            challenges.keccak_input(),
-        );
 
         // Ref. spec SignVerifyChip 1. Verify that keccak(pub_key_bytes) = pub_key_hash
         // by keccak table lookup, where pub_key_bytes is built from the pub_key
@@ -211,47 +186,9 @@ impl<F: Field> SignVerifyConfig<F> {
             ecdsa_config,
             main_gate_config,
             keccak_table,
-            q_rlc_evm_word,
-            q_rlc_keccak_input,
             rlc,
             q_keccak,
         }
-    }
-
-    #[rustfmt::skip]
-    fn configure_rlc(
-        meta: &mut ConstraintSystem<F>,
-        name: &'static str,
-        main_gate_config: MainGateConfig,
-        q_rlc: Selector,
-        rlc: Column<Advice>,
-        challenge: Expression<F>,
-    ) {
-        // Layout (take input with length 12 as an example)
-        // | q_rlc |                          rlc                        |   a   |   b   |   c   |   d    |   e    |
-        // | ----- | --------------------------------------------------- | ----- | ----- | ----- | ------ | ------ |
-        // |   1   |                                                   0 |     0 |     0 |     0 |  be[0] |  be[1] |
-        // |   1   |                                  be[0]*r^1 +  be[1] | be[2] | be[3] | be[4] |  be[5] |  be[6] |
-        // |   1   | be[0]*r^6  + be[1]*r^5  + ... +  be[5]*r^1 +  be[6] | be[7] | be[8] | be[9] | be[10] | be[11] |
-        // |   0   | be[0]*r^11 + be[1]*r^10 + ... + be[10]*r^1 + be[11] |       |       |       |        |        |
-        //
-        // Note that the first row of zeros will be enforced by copy constraint.
-        meta.create_gate(name, |meta| {
-            let q_rlc = meta.query_selector(q_rlc);
-            let [a, b, c, d, e] = main_gate_config
-                .advices()
-                .map(|column| meta.query_advice(column, Rotation::cur()));
-            let [rlc, rlc_next] = [Rotation::cur(), Rotation::next()]
-                .map(|rotation| meta.query_advice(rlc, rotation));
-            let inputs = [e, d, c, b, a, rlc];
-            let powers_of_challenge = iter::successors(challenge.clone().into(), |power| {
-                (challenge.clone() * power.clone()).into()
-            })
-            .take(inputs.len() - 1)
-            .collect_vec();
-
-            vec![q_rlc * (rlc_next - rlc::expr(&inputs, &powers_of_challenge))]
-        });
     }
 }
 
@@ -887,10 +824,7 @@ mod sign_verify_tests {
             let keccak_table = KeccakTable::construct(meta);
             let challenges = Challenges::construct(meta);
 
-            let sign_verify = {
-                let challenges = challenges.exprs(meta);
-                SignVerifyConfig::new(meta, keccak_table, challenges)
-            };
+            let sign_verify = SignVerifyConfig::new(meta, keccak_table);
 
             TestCircuitSignVerifyConfig {
                 sign_verify,
