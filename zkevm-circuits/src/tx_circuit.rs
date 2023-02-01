@@ -1661,6 +1661,11 @@ impl<F: Field> SubCircuit<F> for TxCircuit<F> {
             let assigned_sig_verifs =
                 self.sign_verify
                     .assign(&config.sign_verify, layouter, &sign_datas, challenges)?;
+            self.sign_verify.assert_sig_is_valid(
+                &config.sign_verify,
+                layouter,
+                assigned_sig_verifs.as_slice(),
+            )?;
             self.assign(
                 config,
                 challenges,

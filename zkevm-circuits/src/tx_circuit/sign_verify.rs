@@ -313,12 +313,11 @@ impl<F: Field> SignVerifyChip<F> {
         pk_rlc: &AssignedValue<F>,
         pk_hash_rlc: &AssignedValue<F>,
     ) -> Result<(), Error> {
-        let copy =
-            |ctx: &mut RegionCtx<F>, name, column, assigned: &AssignedValue<F>| {
-                let copied = ctx.assign_advice(|| name, column, assigned.value().copied())?;
-                ctx.constrain_equal(assigned.cell(), copied.cell())?;
-                Ok::<_, Error>(())
-            };
+        let copy = |ctx: &mut RegionCtx<F>, name, column, assigned: &AssignedValue<F>| {
+            let copied = ctx.assign_advice(|| name, column, assigned.value().copied())?;
+            ctx.constrain_equal(assigned.cell(), copied.cell())?;
+            Ok::<_, Error>(())
+        };
 
         let a = config.main_gate_config.advices()[0];
         ctx.enable(config.q_keccak)?;
@@ -749,6 +748,33 @@ impl<F: Field> SignVerifyChip<F> {
         // );
 
         Ok(())
+    }
+
+    pub(crate) fn assert_sig_is_valid(
+        &self,
+        config: &SignVerifyConfig<F>,
+        layouter: &mut impl Layouter<F>,
+        sig_verifs: &[AssignedSignatureVerify<F>],
+    ) -> Result<(), Error> {
+        let flex_gate_chip = &config.ecdsa_config.range.gate;
+
+        layouter.assign_region(
+            || "assert sigs are valid",
+            |region| {
+                let mut ctx = Context::new(
+                    region,
+                    ContextParams {
+                        num_advice: vec![("ecdsa chip".to_string(), NUM_ADVICE)],
+                    },
+                );
+                for sig_verif in sig_verifs {
+                    flex_gate_chip.assert_is_const(&mut ctx, &sig_verif.sig_is_valid, F::one());
+                }
+                flex_gate_chip.finalize(&mut ctx)?;
+
+                Ok(())
+            },
+        )
     }
 }
 
