@@ -22,7 +22,7 @@ use eth_types::sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData};
 use eth_types::{self, Field};
 use halo2_base::{
     gates::{GateInstructions, RangeInstructions as Halo2Range},
-    Context, QuantumCell,
+    AssignedValue, Context, QuantumCell,
 };
 use halo2_base::{utils::modulus, ContextParams};
 use halo2_ecc::{
@@ -36,7 +36,7 @@ use halo2_ecc::{
 };
 use halo2_ecc::{ecc::EccChip, fields::fp_overflow::FpOverflowChip};
 use halo2_proofs::{
-    circuit::{Cell, Layouter, Value},
+    circuit::{Layouter, Value},
     halo2curves::secp256k1::Secp256k1Affine,
     halo2curves::secp256k1::{Fp, Fq},
     plonk::{Advice, Column, ConstraintSystem, Error, Selector},
@@ -198,56 +198,19 @@ impl<F: Field> SignVerifyConfig<F> {
     }
 }
 
-/// Term provides a wrapper of possible assigned cell with value or unassigned
-/// value. It's similar to `AssignedCell` but with explicitly set value.
-///
-/// The reason to use `Term` instead of `AssignedCell` is because the value of
-/// `AssignedCell` will always be `Value::unknown()` if the columns is not in
-/// current phase, even the value assigned is not. And this behavior is due to
-/// the fact that the `to` function in `assign_fixed` and `assign_advice` is
-/// `FnMut` and will be guaranteed to be only called once.
-#[derive(Clone, Debug)]
-pub(crate) enum Term<F> {
-    Assigned(Cell, Value<F>),
-    Unassigned(Value<F>),
-}
-
-impl<F: Field> Term<F> {
-    fn assigned(cell: Cell, value: Value<F>) -> Self {
-        Self::Assigned(cell, value)
-    }
-
-    fn unassigned(value: Value<F>) -> Self {
-        Self::Unassigned(value)
-    }
-
-    fn cell(&self) -> Option<Cell> {
-        match self {
-            Self::Assigned(cell, _) => Some(*cell),
-            Self::Unassigned(_) => None,
-        }
-    }
-
-    fn value(&self) -> Value<F> {
-        match self {
-            Self::Assigned(_, value) => *value,
-            Self::Unassigned(value) => *value,
-        }
-    }
-}
-
 pub(crate) struct AssignedECDSA<F: Field, FC: FieldChip<F>> {
     pk: EccPoint<F, FC::FieldPoint>,
     msg_hash: OverflowInteger<F>,
-    sig_is_valid: halo2_base::AssignedValue<F>,
+    sig_is_valid: AssignedValue<F>,
 }
 
 #[derive(Debug)]
 pub(crate) struct AssignedSignatureVerify<F: Field> {
-    pub(crate) address: halo2_base::AssignedValue<F>,
+    pub(crate) address: AssignedValue<F>,
     pub(crate) msg_len: usize,
     pub(crate) msg_rlc: Value<F>,
-    pub(crate) msg_hash_rlc: halo2_base::AssignedValue<F>,
+    pub(crate) msg_hash_rlc: AssignedValue<F>,
+    pub(crate) sig_is_valid: AssignedValue<F>,
 }
 
 /// Helper structure pass around references to all the chips required for an
@@ -346,12 +309,12 @@ impl<F: Field> SignVerifyChip<F> {
         &self,
         config: &SignVerifyConfig<F>,
         ctx: &mut RegionCtx<F>,
-        is_address_zero: &halo2_base::AssignedValue<F>,
-        pk_rlc: &halo2_base::AssignedValue<F>,
-        pk_hash_rlc: &halo2_base::AssignedValue<F>,
+        is_address_zero: &AssignedValue<F>,
+        pk_rlc: &AssignedValue<F>,
+        pk_hash_rlc: &AssignedValue<F>,
     ) -> Result<(), Error> {
         let copy =
-            |ctx: &mut RegionCtx<F>, name, column, assigned: &halo2_base::AssignedValue<F>| {
+            |ctx: &mut RegionCtx<F>, name, column, assigned: &AssignedValue<F>| {
                 let copied = ctx.assign_advice(|| name, column, assigned.value().copied())?;
                 ctx.constrain_equal(assigned.cell(), copied.cell())?;
                 Ok::<_, Error>(())
@@ -376,13 +339,8 @@ impl<F: Field> SignVerifyChip<F> {
         chips: &ChipsRef<F>,
         sign_data: Option<&SignData>,
         challenges: &Challenges<Value<F>>,
-    ) -> Result<
-        (
-            [halo2_base::AssignedValue<F>; 3],
-            AssignedSignatureVerify<F>,
-        ),
-        Error,
-    > {
+        sig_is_valid: &AssignedValue<F>,
+    ) -> Result<([AssignedValue<F>; 3], AssignedSignatureVerify<F>), Error> {
         let ChipsRef {
             main_gate: _,
             ecdsa_chip,
@@ -586,6 +544,7 @@ impl<F: Field> SignVerifyChip<F> {
                     .keccak_input()
                     .map(|r| rlc::value(sign_data.msg.iter().rev(), r)),
                 msg_hash_rlc,
+                sig_is_valid: sig_is_valid.clone(),
             },
         ))
     }
@@ -648,10 +607,15 @@ impl<F: Field> SignVerifyChip<F> {
                         num_advice: vec![("ecdsa chip".to_string(), NUM_ADVICE)],
                     },
                 );
-                for i in 0..assigned_ecdsas.len() {
+                for (i, e) in assigned_ecdsas.iter().enumerate() {
                     let sign_data = signatures.get(i); // None when padding (enabled when address == 0)
-                    let (to_be_keccak_checked, assigned_sig_verif) =
-                        self.halo2_assign_sig_verify(&mut ctx, &chips, sign_data, challenges)?;
+                    let (to_be_keccak_checked, assigned_sig_verif) = self.halo2_assign_sig_verify(
+                        &mut ctx,
+                        &chips,
+                        sign_data,
+                        challenges,
+                        &e.sig_is_valid,
+                    )?;
                     assigned_sig_verifs.push(assigned_sig_verif);
                     deferred_keccak_check.push(to_be_keccak_checked);
                 }
