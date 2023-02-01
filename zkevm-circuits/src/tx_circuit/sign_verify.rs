@@ -57,7 +57,7 @@ use std::{iter, marker::PhantomData};
 /// Hard coded parameters.
 // FIXME: allow for a configurable param.
 const NUM_ADVICE: usize = 36;
-const LOG_ROWS_PER_SIG: usize = 13;
+const ROWS_PER_SIG: usize = 17550;
 
 /// Chip to handle overflow integers of ECDSA::Fq, the scalar field
 type FqOverflowChip<'a, F> = FpOverflowChip<'a, F, Fq>;
@@ -86,7 +86,7 @@ impl<F: Field> SignVerifyChip<F> {
     /// Return the minimum number of rows required to prove an input of a
     /// particular size.
     pub fn min_num_rows(num_verif: usize) -> usize {
-        num_verif << LOG_ROWS_PER_SIG
+        num_verif * ROWS_PER_SIG
     }
 }
 
@@ -131,7 +131,7 @@ impl<F: Field> SignVerifyConfig<F> {
         let ecdsa_config = FpConfig::configure(
             meta,
             FpStrategy::SimplePlus,
-            &[36],
+            &[NUM_ADVICE],
             &[13],
             1,
             13,
@@ -618,6 +618,11 @@ impl<F: Field> SignVerifyChip<F> {
                     assigned_sig_verifs.push(assigned_sig_verif);
                     deferred_keccak_check.push(to_be_keccak_checked);
                 }
+                // let advice_rows = ctx.advice_rows["ecdsa chip"].iter();
+                // println!(
+                //     "maximum rows used by an advice column: {}",
+                //         advice_rows.clone().max().or(Some(&0)).unwrap(),
+                // );
                 Ok((deferred_keccak_check, assigned_sig_verifs))
             },
         )?;
