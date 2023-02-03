@@ -17,7 +17,7 @@ use crate::{
     table::KeccakTable,
     util::{Challenges, Expr},
 };
-use ecc::maingate;
+// use ark_std::{end_timer, start_timer};
 use eth_types::sign_types::{pk_bytes_le, pk_bytes_swap_endianness, SignData};
 use eth_types::{self, Field};
 use halo2_base::{
@@ -57,7 +57,9 @@ use std::{iter, marker::PhantomData};
 /// Hard coded parameters.
 // FIXME: allow for a configurable param.
 const NUM_ADVICE: usize = 36;
-const ROWS_PER_SIG: usize = 17550;
+// Each ecdsa signature requires 11688  (signature) + 119 (rlc) = 11807 rows
+// We set ROWS_PER_SIG = 11850 to allows for a few buffer
+const ROWS_PER_SIG: usize = 11850;
 
 /// Chip to handle overflow integers of ECDSA::Fq, the scalar field
 type FqOverflowChip<'a, F> = FpOverflowChip<'a, F, Fq>;
@@ -331,6 +333,34 @@ impl<F: Field> SignVerifyChip<F> {
         Ok(())
     }
 
+    /// Input a base F, generate a sequence of cells:
+    /// 1m base, base^2, base^3, ...
+    fn gen_powers(
+        &self,
+        ctx: &mut Context<F>,
+        chips: &ChipsRef<F>,
+        base: &F,
+        size: usize,
+    ) -> Result<Vec<AssignedValue<F>>, Error> {
+        assert!(size >= 2);
+        let chip = &chips.ecdsa_chip.range.gate;
+
+        let one = Value::known(F::from_u128(1));
+        let one_cell = QuantumCell::Witness(one);
+
+        let base = Value::known(*base);
+        let base_cell = QuantumCell::Witness(base);
+
+        let mut res = chip.assign_region(ctx, vec![one_cell, base_cell.clone()], vec![], None)?;
+
+        for i in 2..size {
+            let prev_cell = QuantumCell::Existing(&res[i - 1]);
+            let tmp = chip.mul(ctx, &base_cell, &prev_cell)?;
+            res.push(tmp)
+        }
+        Ok(res)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn halo2_assign_sig_verify(
         &self,
@@ -363,23 +393,20 @@ impl<F: Field> SignVerifyChip<F> {
             .map(|x| QuantumCell::Constant(x))
             .collect_vec();
 
-        let evm_challenge_powers = iter::successors(Some(F::one()), |coeff| {
-            Some(challenges.evm_word().inner.unwrap() * *coeff)
-        })
-        .take(32);
-
-        let evm_challenge_powers = evm_challenge_powers
-            .map(|x| QuantumCell::Witness(Value::known(x)))
+        let evm_challenge_powers =
+            self.gen_powers(ctx, chips, &challenges.evm_word().inner.unwrap(), 32)?;
+        let evm_challenge_powers_cells = evm_challenge_powers
+            .iter()
+            .map(|x| QuantumCell::Existing(x))
             .collect_vec();
 
-        let keccak_challenge_powers = iter::successors(Some(F::one()), |coeff| {
-            Some(challenges.keccak_input().inner.unwrap() * *coeff)
-        })
-        .take(64);
-
-        let keccak_challenge_powers = keccak_challenge_powers
-            .map(|x| QuantumCell::Witness(Value::known(x)))
+        let keccak_challenge_powers =
+            self.gen_powers(ctx, chips, &challenges.keccak_input().inner.unwrap(), 64)?;
+        let keccak_challenge_powers_cells = keccak_challenge_powers
+            .iter()
+            .map(|x| QuantumCell::Existing(x))
             .collect_vec();
+
         // ================================================
         // step 1. convert pk hash into address
         // ================================================
@@ -461,7 +488,7 @@ impl<F: Field> SignVerifyChip<F> {
                     .map(|x| QuantumCell::Existing(x))
                     .take(32)
                     .collect_vec(),
-                &evm_challenge_powers,
+                &evm_challenge_powers_cells,
             )?;
             msg_hash_rlc
         };
@@ -518,7 +545,7 @@ impl<F: Field> SignVerifyChip<F> {
             let (_, _, pk_rlc) = flex_gate_chip.inner_product(
                 ctx,
                 &assigned_pk_le_selected,
-                &keccak_challenge_powers,
+                &keccak_challenge_powers_cells,
             )?;
             // println!("pk rlc halo2ecc: {:?}", pk_rlc.value());
             pk_rlc
@@ -527,11 +554,9 @@ impl<F: Field> SignVerifyChip<F> {
         // ================================================
         // step 4 random linear combination of pk_hash
         // ================================================
-        let pk_hash_rlc = {
-            let (_, _, pk_hash_rlc) =
-                flex_gate_chip.inner_product(ctx, &pk_hash_cells, &evm_challenge_powers)?;
-            pk_hash_rlc
-        };
+        let (_, _, pk_hash_rlc) =
+            flex_gate_chip.inner_product(ctx, &pk_hash_cells, &evm_challenge_powers_cells)?;
+
         // println!("pk hash rlc halo2ecc: {:?}", pk_hash_rlc.value());
 
         Ok((
@@ -555,6 +580,7 @@ impl<F: Field> SignVerifyChip<F> {
         signatures: &[SignData],
         challenges: &Challenges<Value<F>>,
     ) -> Result<Vec<AssignedSignatureVerify<F>>, Error> {
+        // let timer = start_timer!(|| "assign");
         if signatures.len() > self.max_verif {
             error!(
                 "signatures.len() = {} > max_verif = {}",
@@ -571,6 +597,7 @@ impl<F: Field> SignVerifyChip<F> {
             ecdsa_chip,
         };
 
+        // let ecdsa = start_timer!(|| "ecdsa chip verification");
         let assigned_ecdsas = layouter.assign_region(
             || "ecdsa chip verification",
             |region| {
@@ -591,9 +618,19 @@ impl<F: Field> SignVerifyChip<F> {
                     let assigned_ecdsa = self.assign_ecdsa(&mut ctx, &chips, &signature)?;
                     assigned_ecdsas.push(assigned_ecdsa);
                 }
+
+                // let advice_rows = ctx.advice_rows["ecdsa chip"].iter();
+                // let max_rows = advice_rows.clone().max().or(Some(&0)).unwrap();
+                // println!(
+                //     "total rows: {}; rows per sig: {}",
+                //     max_rows,
+                //     max_rows / self.max_verif,
+                // );
                 Ok(assigned_ecdsas)
             },
         )?;
+        // end_timer!(ecdsa);
+        // let rlc = start_timer!(|| "rlc verification");
         let (deferred_keccak_check, assigned_sig_verifs) = layouter.assign_region(
             || "signature address verify",
             |region| {
@@ -619,14 +656,17 @@ impl<F: Field> SignVerifyChip<F> {
                     deferred_keccak_check.push(to_be_keccak_checked);
                 }
                 // let advice_rows = ctx.advice_rows["ecdsa chip"].iter();
+                // let max_rows = advice_rows.clone().max().or(Some(&0)).unwrap();
                 // println!(
-                //     "maximum rows used by an advice column: {}",
-                //         advice_rows.clone().max().or(Some(&0)).unwrap(),
+                //     "total rows: {}; rows per sig: {}",
+                //     max_rows,
+                //     max_rows / self.max_verif,
                 // );
                 Ok((deferred_keccak_check, assigned_sig_verifs))
             },
         )?;
-
+        // end_timer!(rlc);
+        // let lookup = start_timer!(|| "hash lookup");
         layouter.assign_region(
             || "keccak lookup",
             |region| {
@@ -645,7 +685,8 @@ impl<F: Field> SignVerifyChip<F> {
                 Ok(())
             },
         )?;
-
+        // end_timer!(lookup);
+        // end_timer!(timer);
         Ok(assigned_sig_verifs)
     }
 
@@ -930,28 +971,30 @@ mod sign_verify_tests {
         // pk_hash: d90e2e9d267cbcfd94de06fa7adbe6857c2c733025c0b8938a76beeefc85d6c7
         // addr: 0x7adbe6857c2c733025c0b8938a76beeefc85d6c7
         let mut rng = XorShiftRng::seed_from_u64(1);
-        const MAX_VERIF: usize = 3;
-        const NUM_SIGS: usize = 2;
-        let mut signatures = Vec::new();
-        for _ in 0..NUM_SIGS {
-            let (sk, pk) = gen_key_pair(&mut rng);
-            let msg = gen_msg(&mut rng);
-            let msg_hash: [u8; 32] = Keccak256::digest(&msg)
-                .as_slice()
-                .to_vec()
-                .try_into()
-                .expect("hash length isn't 32 bytes");
-            let msg_hash = secp256k1::Fq::from_bytes(&msg_hash).unwrap();
-            let sig = sign_with_rng(&mut rng, sk, msg_hash);
-            signatures.push(SignData {
-                signature: sig,
-                pk,
-                msg: msg.into(),
-                msg_hash,
-            });
+        let k = 17;
+        for max_verif in [2, 4, 8] {
+            println!("#sigs: {}", max_verif);
+            let num_sigs = max_verif;
+            let mut signatures = Vec::new();
+            for _ in 0..num_sigs {
+                let (sk, pk) = gen_key_pair(&mut rng);
+                let msg = gen_msg(&mut rng);
+                let msg_hash: [u8; 32] = Keccak256::digest(&msg)
+                    .as_slice()
+                    .to_vec()
+                    .try_into()
+                    .expect("hash length isn't 32 bytes");
+                let msg_hash = secp256k1::Fq::from_bytes(&msg_hash).unwrap();
+                let sig = sign_with_rng(&mut rng, sk, msg_hash);
+                signatures.push(SignData {
+                    signature: sig,
+                    pk,
+                    msg: msg.into(),
+                    msg_hash,
+                });
+            }
+            run::<Fr>(k, max_verif, signatures);
+            println!();
         }
-
-        let k = 19;
-        run::<Fr>(k, MAX_VERIF, signatures);
     }
 }
